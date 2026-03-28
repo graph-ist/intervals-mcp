@@ -1,0 +1,12 @@
+services:
+  - type: web
+    name: intervals-mcp
+    runtime: docker
+    plan: free
+    envVars:
+      - key: INTERVALS_API_KEY
+        sync: false
+      - key: INTERVALS_ATHLETE_ID
+        sync: false
+      - key: PORT
+        value: 3001
