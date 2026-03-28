@@ -17,6 +17,35 @@ cp .env.example .env
 
 Inserisci la tua API key di intervals.icu (Settings → Developer).
 
+## Uso da smartphone/tablet (Render deploy)
+
+Deploy gratuito su Render per usare il server MCP da qualsiasi dispositivo con claude.ai.
+
+### Setup (una volta sola)
+
+1. Vai su [render.com/new](https://dashboard.render.com/new) → **Web Service**
+2. Connetti il repo GitHub `graph-ist/intervals-mcp`
+3. Render rileva il Dockerfile automaticamente. Verifica:
+   - **Name**: `intervals-mcp`
+   - **Plan**: Free
+4. Aggiungi le **Environment Variables**:
+   - `INTERVALS_API_KEY` = la tua API key di intervals.icu
+   - `INTERVALS_ATHLETE_ID` = il tuo athlete ID (es. `i526588`)
+5. Clicca **Deploy**
+
+Dopo qualche minuto avrai un URL tipo:
+```
+https://intervals-mcp.onrender.com/mcp
+```
+
+### Connetti a claude.ai
+
+Vai su **claude.ai → Settings → Integrations → Add integration** e incolla l'URL del server MCP.
+
+Da quel momento funziona da qualsiasi dispositivo — smartphone, tablet, qualsiasi browser.
+
+> **Nota**: il free tier si spegne dopo 15 min di inattività. La prima richiesta dopo un periodo di inattività impiega ~30 secondi per il riavvio — poi è istantaneo.
+
 ## Uso con Claude Desktop (Mac)
 
 Aggiungi al file `~/Library/Application Support/Claude/claude_desktop_config.json`:
@@ -42,7 +71,7 @@ Riavvia Claude Desktop.
 
 ## Uso con claude.ai (Integrations — remote)
 
-Avvia il server HTTP:
+Se hai deployato su Render (vedi sopra), il server è già accessibile. Per test locale:
 
 ```bash
 INTERVALS_API_KEY=xxx INTERVALS_ATHLETE_ID=yyy npm run serve
@@ -50,12 +79,7 @@ INTERVALS_API_KEY=xxx INTERVALS_ATHLETE_ID=yyy npm run serve
 
 Il server parte su `http://localhost:3001/mcp`.
 
-Per usarlo con claude.ai Integrations serve un URL pubblico HTTPS. Opzioni:
-
-1. **ngrok** (test): `ngrok http 3001` → usa l'URL generato
-2. **Deploy su Vercel/Fly.io/Railway** (produzione)
-
-Poi in claude.ai → Settings → Integrations → aggiungi l'URL del server MCP.
+Per usarlo con claude.ai Integrations serve un URL pubblico HTTPS — usa il deploy Render o ngrok per test locale.
 
 ## Modelli matematici
 
