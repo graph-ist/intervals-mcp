@@ -71,9 +71,13 @@ app.delete("/mcp", async (req, res) => {
   res.status(200).json({ ok: true });
 });
 
-// Health check
+// Health check (Render pings / by default)
+app.get("/", (_req, res) => {
+  res.json({ status: "ok", tools: 30, prompts: 4 });
+});
+
 app.get("/health", (_req, res) => {
-  res.json({ status: "ok", tools: 30, resources: 0, prompts: 4 });
+  res.json({ status: "ok", tools: 30, prompts: 4 });
 });
 
 app.listen(port, () => {
