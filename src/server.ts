@@ -48,7 +48,7 @@ export function createServer(): McpServer {
         role: "user" as const,
         content: {
           type: "text" as const,
-          text: `Dammi il punto della situazione per oggi.\n\nUsa get_recovery_index e get_wellness_data (ultimi 7 giorni).\n\nFormatta la risposta inline nella chat (NO artifact HTML). Usa questo layout:\n\n1. Recovery Index grande con fascia (es. "51 / Strained")\n2. Tabella metriche: per ogni metrica (HRV, FC riposo, Sleeping HR, Sonno, Sleep score, Baevsky SI, SpO2, Respirazione) mostra: valore, variazione vs baseline, fascia (green/amber/red)\n3. Recovery Index ultimi 7 giorni come tabella compatta con fascia per giorno\n4. Training load: CTL, ATL, TSB con fascia\n5. Segnali di attenzione se presenti\n6. Raccomandazione chiara: "Oggi puoi spingere" / "Oggi vai easy" / "Oggi riposa" con motivazione in una riga\n\nInterpreta OGNI valore usando i reference_ranges. Sii conciso, no emoji, no artifact.`,
+          text: `Dammi il punto della situazione per oggi.\n\nUsa get_recovery_index e get_wellness_data (ultimi 7 giorni).\n\nMostra Recovery Index, metriche fisiologiche con fascia e confronto baseline, trend 7 giorni, segnali di attenzione, e raccomandazione per la giornata.\nInterpreta ogni valore usando i reference_ranges. No emoji.`,
         },
       }],
     })
@@ -63,7 +63,7 @@ export function createServer(): McpServer {
         role: "user" as const,
         content: {
           type: "text" as const,
-          text: `Check serale post-allenamento.\n\nUsa get_recovery_index e get_training_load_risk.\n\nFormatta la risposta inline nella chat (NO artifact HTML). Usa questo layout:\n\n1. Recovery Index con fascia\n2. Tabella metriche wellness: valore, variazione vs baseline, fascia\n3. Training load risk: ACWR con fascia di rischio, Monotony, Strain\n4. Spike o anomalie se presenti\n5. Red flag se presenti\n6. Raccomandazione per domani: intensita, volume, o riposo\n\nInterpreta OGNI valore usando i reference_ranges. Sii conciso, no emoji, no artifact.`,
+          text: `Check serale post-allenamento.\n\nUsa get_recovery_index e get_training_load_risk.\n\nMostra Recovery Index, metriche fisiologiche con fascia, ACWR/Monotony/Strain con rischio, segnali di attenzione, e raccomandazione per domani.\nInterpreta ogni valore usando i reference_ranges. No emoji.`,
         },
       }],
     })
@@ -81,7 +81,7 @@ export function createServer(): McpServer {
         role: "user" as const,
         content: {
           type: "text" as const,
-          text: `Review settimanale dal ${oldest ?? daysAgo(7)} al ${newest ?? today()}.\n\nRecupera: get_recent_activities, get_fitness_summary, get_training_load_risk, get_recovery_index, get_wellness_data (7 giorni).\n\nFormatta la risposta inline nella chat (NO artifact HTML). Usa questo layout:\n\n1. Tabella volume: sport | ore | km | TSS | n. attivita\n2. TSS medio giornaliero e confronto con settimana precedente\n3. CTL, ATL, TSB con fascia e trend\n4. ACWR e Monotony con fascia di rischio\n5. Recovery Index attuale con fascia\n6. Recovery Index giornaliero della settimana (tabella compatta)\n7. Voto settimana (1-10) con motivazione\n8. Suggerimenti per la prossima settimana\n\nInterpreta OGNI valore usando i reference_ranges. Sii conciso, no emoji, no artifact.`,
+          text: `Review settimanale dal ${oldest ?? daysAgo(7)} al ${newest ?? today()}.\n\nRecupera get_recent_activities, get_fitness_summary, get_training_load_risk, get_recovery_index, get_wellness_data (7 giorni).\n\nMostra volume per sport, TSS, CTL/ATL/TSB, ACWR e rischio carico, Recovery Index, trend della settimana, voto e suggerimenti per la prossima settimana.\nInterpreta ogni valore usando i reference_ranges. No emoji.`,
         },
       }],
     })
@@ -98,7 +98,7 @@ export function createServer(): McpServer {
         role: "user" as const,
         content: {
           type: "text" as const,
-          text: `Analizza l'attivita ${activity_id}.\n\nRecupera get_activity_detail. Se bike con potenza, aggiungi get_aerobic_decoupling e get_activity_dfrc.\n\nFormatta la risposta inline nella chat (NO artifact HTML). Usa questo layout:\n\n1. Header: sport, durata, distanza, TSS, IF\n2. Metriche chiave: potenza/passo media, NP, HR media, VI, EF, cadenza\n3. Tabella laps/split con analisi pacing\n4. Distribuzione zone (potenza e HR) come tabella compatta\n5. Se bike: decoupling % con fascia e assessment\n6. Se bike: dFRC depletion minima %, tempo sotto 30%\n7. Punti di forza e cosa migliorare\n\nInterpreta i valori usando i reference_ranges. Sii conciso, no emoji, no artifact.`,
+          text: `Analizza l'attivita ${activity_id}.\n\nRecupera get_activity_detail. Se bike con potenza, aggiungi get_aerobic_decoupling e get_activity_dfrc.\n\nMostra riepilogo, metriche chiave, laps/split, zone, decoupling e dFRC se disponibili, punti di forza e cosa migliorare.\nInterpreta i valori usando i reference_ranges. No emoji.`,
         },
       }],
     })
