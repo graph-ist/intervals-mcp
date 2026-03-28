@@ -158,10 +158,10 @@ Accessibili da "Add from intervals" in claude.ai o dal menu prompt in Claude Des
 
 | Prompt | Quando | Cosa fa |
 |---|---|---|
-| `morning_check` ☀️ | Mattina | Wellness + Recovery Index: come hai dormito, HRV, prontezza, raccomandazione per la giornata |
-| `recovery_check` 🌙 | Sera post-allenamento | Recovery Index + Training Load Risk: stato recupero, carico, rischio, raccomandazioni per domani |
-| `weekly_review` 📊 | Domenica sera | Review completa: volume per sport, TSS, zone, ACWR, trend CTL/ATL/TSB, voto e suggerimenti |
-| `activity_review` 🏋️ | Fine attività | Dettagli attività + decoupling + dFRC: pacing, zone, split, sforzo anaerobico |
+| `morning_check` | Mattina | Dashboard visuale: Recovery Index gauge, barre metriche, sparkline HRV/FC, raccomandazione giornata |
+| `recovery_check` | Sera post-allenamento | Dashboard visuale: Recovery Index + ACWR/Monotony/Strain gauge, red flag, raccomandazioni domani |
+| `weekly_review` | Domenica sera | Dashboard visuale: volume per sport, TSS giornaliero, CTL/ATL/TSB sparkline, voto settimana |
+| `activity_review` | Fine attivita | Dashboard visuale: metriche attivita, zone, pacing, decoupling gauge, dFRC chart |
 
 ### Differenze tra i tool di wellness/fitness
 

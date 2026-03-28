@@ -41,14 +41,14 @@ export function createServer(): McpServer {
 
   server.prompt(
     "morning_check",
-    "☀️ Check mattutino: wellness, HRV, sonno, prontezza per la giornata",
+    "Check mattutino: wellness, HRV, sonno, prontezza per la giornata",
     {},
     async () => ({
       messages: [{
         role: "user" as const,
         content: {
           type: "text" as const,
-          text: `Buongiorno. Dammi il punto della situazione per oggi.\n\nUsa get_wellness_data (ultimi 7 giorni) per vedere i dati raw recenti e get_recovery_index per il mio stato di recupero.\n\nMostra in modo conciso:\n1. Qualità del sonno stanotte (ore, score) e trend ultimi giorni\n2. HRV e FC a riposo: come sono rispetto alla mia baseline?\n3. Recovery Index: in quale fascia sono? Cosa significa?\n4. TSB/Form: fresco, stanco, o in equilibrio?\n5. Red flag se presenti\n\nConcludi con una raccomandazione chiara: "Oggi puoi spingere / oggi vai easy / oggi riposa"\n\nInterpreta OGNI valore usando i reference_ranges.`,
+          text: `Buongiorno. Dammi il punto della situazione per oggi.\n\nUsa get_wellness_data (ultimi 7 giorni) per vedere i dati raw recenti e get_recovery_index per il mio stato di recupero.\n\nDopo aver raccolto i dati, crea un artifact HTML con una dashboard visuale che mostri:\n- Recovery Index come gauge circolare grande (0-100) con colore zona (rosso/giallo/verde)\n- Barra orizzontale per ogni metrica (HRV, FC riposo, sonno, Baevsky SI, SpO2) con indicatore della posizione nella fascia e colore semaforo\n- Sparkline degli ultimi 7 giorni per HRV e FC riposo\n- TSB/Form come indicatore con zona colorata\n- Red flag evidenziate in rosso se presenti\n- Raccomandazione finale grande e chiara: "Oggi puoi spingere" / "Oggi vai easy" / "Oggi riposa"\n- Tema scuro (#0f0f23), font sans-serif, no emoji\n\nSotto l'artifact, aggiungi un breve commento testuale con l'interpretazione.\nInterpreta OGNI valore usando i reference_ranges.\nNon usare emoji nel testo.`,
         },
       }],
     })
@@ -56,14 +56,14 @@ export function createServer(): McpServer {
 
   server.prompt(
     "recovery_check",
-    "🌙 Check serale post-allenamento: recupero, carico, rischio",
+    "Check serale post-allenamento: recupero, carico, rischio",
     {},
     async () => ({
       messages: [{
         role: "user" as const,
         content: {
           type: "text" as const,
-          text: `Check serale dopo l'allenamento.\n\nUsa get_recovery_index per il mio stato di recupero e get_training_load_risk per il carico.\n\nMostra:\n1. Recovery Index attuale e trend (↑↗→↘↓)\n2. Per ogni metrica (HRV, FC riposo, sonno, Baevsky, SpO₂): valore, fascia, significato\n3. ACWR e rischio: sto caricando troppo?\n4. Monotony: il carico è troppo monotono o ben variato?\n5. Red flag e spike se presenti\n\nConcludi con raccomandazioni per domani: intensità, volume, o riposo.\n\nInterpreta OGNI valore usando i reference_ranges.`,
+          text: `Check serale dopo l'allenamento.\n\nUsa get_recovery_index per il mio stato di recupero e get_training_load_risk per il carico.\n\nDopo aver raccolto i dati, crea un artifact HTML con una dashboard visuale che mostri:\n- Recovery Index come gauge circolare (0-100) con colore zona\n- ACWR come barra orizzontale con zone colorate (safe verde / caution giallo / danger rosso)\n- Monotony e Strain come indicatori con soglie\n- Per ogni metrica wellness: barra con posizione nella fascia e semaforo\n- Trend arrows per le metriche chiave\n- Red flag e spike evidenziati\n- Raccomandazione per domani: intensita, volume, o riposo\n- Tema scuro (#0f0f23), font sans-serif, no emoji\n\nSotto l'artifact, aggiungi un breve commento testuale.\nInterpreta OGNI valore usando i reference_ranges.\nNon usare emoji nel testo.`,
         },
       }],
     })
@@ -71,7 +71,7 @@ export function createServer(): McpServer {
 
   server.prompt(
     "weekly_review",
-    "📊 Review domenicale: settimana completa, volume, carico, trend",
+    "Review domenicale: settimana completa, volume, carico, trend",
     {
       oldest: z.string().optional().describe("Data inizio YYYY-MM-DD (default: 7 giorni fa)"),
       newest: z.string().optional().describe("Data fine YYYY-MM-DD (default: oggi)"),
@@ -81,7 +81,7 @@ export function createServer(): McpServer {
         role: "user" as const,
         content: {
           type: "text" as const,
-          text: `Review settimanale dal ${oldest ?? daysAgo(7)} al ${newest ?? today()}.\n\nRecupera:\n- get_recent_activities (7 giorni) per le attività svolte\n- get_fitness_summary per i totali\n- get_training_load_risk per Monotony, ACWR e rischi\n- get_recovery_index per lo stato di recupero attuale\n- get_wellness_data (7 giorni) per il trend giornaliero\n\nAnalizza:\n1. Volume totale per sport (ore e km)\n2. TSS totale e medio giornaliero\n3. Distribuzione zone (tempo in Z1-Z5 se disponibile)\n4. Rapporto swim:bike:run\n5. CTL/ATL/TSB trend nella settimana\n6. ACWR e rischio carico\n7. Stato di recupero attuale\n\nConcludi con:\n- Voto alla settimana (carico adeguato? ben distribuito?)\n- Suggerimenti concreti per la prossima settimana\n\nInterpreta OGNI valore usando i reference_ranges.`,
+          text: `Review settimanale dal ${oldest ?? daysAgo(7)} al ${newest ?? today()}.\n\nRecupera:\n- get_recent_activities (7 giorni) per le attivita svolte\n- get_fitness_summary per i totali\n- get_training_load_risk per Monotony, ACWR e rischi\n- get_recovery_index per lo stato di recupero attuale\n- get_wellness_data (7 giorni) per il trend giornaliero\n\nDopo aver raccolto i dati, crea un artifact HTML con una dashboard visuale che mostri:\n- Volume per sport come bar chart orizzontali (ore e km)\n- TSS giornaliero come bar chart con media settimanale\n- CTL/ATL/TSB come sparkline a 7 giorni\n- ACWR e Monotony come gauge con zone colorate\n- Recovery Index attuale come gauge\n- Tabella riassuntiva: sport | ore | km | TSS | n. attivita\n- Voto alla settimana (1-10) con colore\n- Suggerimenti per la prossima settimana\n- Tema scuro (#0f0f23), font sans-serif, no emoji\n\nSotto l'artifact, aggiungi un commento testuale con analisi e raccomandazioni.\nInterpreta OGNI valore usando i reference_ranges.\nNon usare emoji nel testo.`,
         },
       }],
     })
@@ -89,16 +89,16 @@ export function createServer(): McpServer {
 
   server.prompt(
     "activity_review",
-    "🏋️ Analisi post-attività: dettagli, zone, sforzo, decoupling",
+    "Analisi post-attivita: dettagli, zone, sforzo, decoupling",
     {
-      activity_id: z.string().describe("ID attività su intervals.icu"),
+      activity_id: z.string().describe("ID attivita su intervals.icu"),
     },
     async ({ activity_id }) => ({
       messages: [{
         role: "user" as const,
         content: {
           type: "text" as const,
-          text: `Analizza l'attività ${activity_id} appena completata.\n\nRecupera get_activity_detail per avere tutti i dettagli.\nSe è un'attività con potenza (bike), aggiungi get_aerobic_decoupling e get_activity_dfrc.\n\nget_activity_detail include: tipo sport, durata, distanza, TSS/IF/NP, potenza media/max, HR media/max, cadenza, calorie, laps/split con tempi e medie, intervalli rilevati, tempo in zona (potenza e HR), training load, variability index, efficiency factor.\n\nMostra:\n1. Riepilogo: sport, durata, distanza, TSS, IF\n2. Intensità: potenza/passo medio e NP, HR media, zone principali\n3. Laps/split con analisi pacing (negative/positive split, even pacing)\n4. Decoupling aerobico se disponibile: drift %, assessment\n5. dFRC: quanto hai usato la riserva anaerobica? Sei andato in crisi?\n6. Punti di forza e cosa migliorare\n\nInterpreta i valori usando i reference_ranges dove disponibili.`,
+          text: `Analizza l'attivita ${activity_id} appena completata.\n\nRecupera get_activity_detail per avere tutti i dettagli.\nSe e un'attivita con potenza (bike), aggiungi get_aerobic_decoupling e get_activity_dfrc.\n\nDopo aver raccolto i dati, crea un artifact HTML con una dashboard visuale che mostri:\n- Header: sport, durata, distanza, TSS, IF in cards grandi\n- Distribuzione zone potenza e HR come bar chart orizzontali con colori zona\n- Laps/split come tabella con evidenziazione pacing (positive/negative split)\n- Se bike: decoupling % come gauge (verde <5%, giallo 5-8%, rosso >8%)\n- Se bike: dFRC depletion come grafico lineare (tempo vs % riserva)\n- Metriche chiave: NP, VI, EF, potenza media, HR media\n- Tema scuro (#0f0f23), font sans-serif, no emoji\n\nSotto l'artifact, aggiungi un commento testuale con punti di forza e cosa migliorare.\nInterpreta i valori usando i reference_ranges dove disponibili.\nNon usare emoji nel testo.`,
         },
       }],
     })
