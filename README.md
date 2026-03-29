@@ -17,34 +17,40 @@ cp .env.example .env
 
 Inserisci la tua API key di intervals.icu (Settings → Developer).
 
-## Uso da smartphone/tablet (Render deploy)
+## Uso da smartphone/tablet (Raspberry Pi + Cloudflare Tunnel)
 
-Deploy gratuito su Render per usare il server MCP da qualsiasi dispositivo con claude.ai.
+Deploy su Raspberry Pi con Cloudflare Tunnel per accesso da qualsiasi dispositivo, sempre acceso, zero cold start.
 
-### Setup (una volta sola)
+### Setup sul Pi
 
-1. Vai su [render.com/new](https://dashboard.render.com/new) → **Web Service**
-2. Connetti il repo GitHub `graph-ist/intervals-mcp`
-3. Render rileva il Dockerfile automaticamente. Verifica:
-   - **Name**: `intervals-mcp`
-   - **Plan**: Free
-4. Aggiungi le **Environment Variables**:
-   - `INTERVALS_API_KEY` = la tua API key di intervals.icu
-   - `INTERVALS_ATHLETE_ID` = il tuo athlete ID (es. `i526588`)
-5. Clicca **Deploy**
+```bash
+# 1. Clona, installa, avvia il server come servizio systemd
+curl -sL https://raw.githubusercontent.com/graph-ist/intervals-mcp/main/pi/setup.sh | bash
 
-Dopo qualche minuto avrai un URL tipo:
+# 2. Crea il tunnel Cloudflare (serve un dominio su Cloudflare)
+curl -sL https://raw.githubusercontent.com/graph-ist/intervals-mcp/main/pi/setup-tunnel.sh | bash
 ```
-https://intervals-mcp.onrender.com/mcp
+
+Dopo il setup avrai un URL tipo:
+```
+https://mcp.tuodominio.com/mcp
 ```
 
 ### Connetti a claude.ai
 
-Vai su **claude.ai → Settings → Integrations → Add integration** e incolla l'URL del server MCP.
+Vai su **claude.ai → Settings → Connectors → Add custom connector** e incolla l'URL del tunnel.
 
-Da quel momento funziona da qualsiasi dispositivo — smartphone, tablet, qualsiasi browser.
+Da quel momento funziona da qualsiasi dispositivo, sempre istantaneo.
 
-> **Nota**: il free tier si spegne dopo 15 min di inattività. La prima richiesta dopo un periodo di inattività impiega ~30 secondi per il riavvio — poi è istantaneo.
+### Aggiornare
+
+```bash
+cd ~/intervals-mcp && git pull && npm run build && sudo systemctl restart intervals-mcp
+```
+
+### Alternativa: Render (cloud, con cold start)
+
+Se non hai un Pi, puoi usare Render (free tier). Vedi [Dockerfile](Dockerfile) e [render.yaml](render.yaml). Nota: il free tier si spegne dopo 15 min di inattivita, la prima richiesta impiega ~30s.
 
 ## Uso con Claude Desktop (Mac)
 
