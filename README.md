@@ -19,34 +19,126 @@ Inserisci la tua API key di intervals.icu (Settings → Developer).
 
 ## Uso da smartphone/tablet (Raspberry Pi + Cloudflare Tunnel)
 
-Deploy su Raspberry Pi con Cloudflare Tunnel per accesso da qualsiasi dispositivo, sempre acceso, zero cold start.
+Deploy su Raspberry Pi con Cloudflare Quick Tunnel per accesso da qualsiasi dispositivo, sempre acceso, zero cold start.
+
+### Requisiti
+
+- Raspberry Pi (testato su Pi 8GB) con Raspberry Pi OS Lite 64-bit
+- SSH abilitato (username `pi`, hostname `intervals-pi`)
+- Stessa rete WiFi del Mac per il setup iniziale
 
 ### Setup sul Pi
 
 ```bash
-# 1. Clona, installa, avvia il server come servizio systemd
-curl -sL https://raw.githubusercontent.com/graph-ist/intervals-mcp/main/pi/setup.sh | bash
+# Dal Mac: connettiti al Pi
+ssh pi@intervals-pi.local
 
-# 2. Crea il tunnel Cloudflare (serve un dominio su Cloudflare)
-curl -sL https://raw.githubusercontent.com/graph-ist/intervals-mcp/main/pi/setup-tunnel.sh | bash
+# Sul Pi: installa Node.js 22
+curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash -
+sudo apt-get install -y nodejs git
+
+# Opzione A: clona da GitHub (serve deploy key per repo privato)
+git clone git@github.com:graph-ist/intervals-mcp.git ~/intervals-mcp
+
+# Opzione B: copia dal Mac con SCP
+# Dal Mac: scp -r src/ package.json package-lock.json tsconfig.json pi@intervals-pi.local:~/intervals-mcp/
+
+# Build
+cd ~/intervals-mcp && npm ci && npm run build
+
+# Crea .env
+cat > .env << EOF
+INTERVALS_API_KEY=la_tua_api_key
+INTERVALS_ATHLETE_ID=il_tuo_athlete_id
+PORT=3001
+EOF
 ```
 
-Dopo il setup avrai un URL tipo:
+### Servizi systemd
+
+```bash
+# intervals-mcp server
+sudo tee /etc/systemd/system/intervals-mcp.service > /dev/null << 'EOF'
+[Unit]
+Description=intervals-mcp MCP server
+After=network-online.target
+Wants=network-online.target
+[Service]
+Type=simple
+User=pi
+WorkingDirectory=/home/pi/intervals-mcp
+EnvironmentFile=/home/pi/intervals-mcp/.env
+ExecStart=/usr/bin/node /home/pi/intervals-mcp/dist/http.js
+Restart=always
+RestartSec=5
+[Install]
+WantedBy=multi-user.target
+EOF
+
+# Cloudflare Quick Tunnel
+sudo apt-get install -y curl
+curl -L https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-arm64.deb -o /tmp/cloudflared.deb
+sudo dpkg -i /tmp/cloudflared.deb
+
+sudo tee /etc/systemd/system/cloudflared.service > /dev/null << 'EOF'
+[Unit]
+Description=Cloudflare Quick Tunnel for intervals-mcp
+After=intervals-mcp.service
+Requires=intervals-mcp.service
+[Service]
+Type=simple
+User=pi
+ExecStart=/usr/bin/cloudflared tunnel --url http://localhost:3001 --no-autoupdate
+Restart=always
+RestartSec=5
+[Install]
+WantedBy=multi-user.target
+EOF
+
+# Avvia tutto
+sudo systemctl daemon-reload
+sudo systemctl enable intervals-mcp cloudflared
+sudo systemctl start intervals-mcp cloudflared
 ```
-https://mcp.tuodominio.com/mcp
+
+### Recuperare l'URL del tunnel
+
+Il Quick Tunnel genera un URL casuale ad ogni avvio (es. `https://xxx-yyy-zzz.trycloudflare.com`). Per recuperarlo:
+
+```bash
+ssh pi@intervals-pi.local "sudo journalctl -u cloudflared -n 20 --no-pager | grep trycloudflare"
 ```
+
+L'URL resta stabile finché il Pi è acceso. Cambia solo dopo un riavvio.
 
 ### Connetti a claude.ai
 
-Vai su **claude.ai → Settings → Connectors → Add custom connector** e incolla l'URL del tunnel.
+Vai su **claude.ai → Settings → Connectors → Add custom connector** e incolla l'URL del tunnel + `/mcp`:
 
-Da quel momento funziona da qualsiasi dispositivo, sempre istantaneo.
+```
+https://xxx-yyy-zzz.trycloudflare.com/mcp
+```
 
-### Aggiornare
+### Aggiornare (dal Mac)
 
 ```bash
-cd ~/intervals-mcp && git pull && npm run build && sudo systemctl restart intervals-mcp
+npm run build
+sshpass -p 'raspberry' scp -r src/ package.json package-lock.json tsconfig.json pi@intervals-pi.local:~/intervals-mcp/
+sshpass -p 'raspberry' ssh pi@intervals-pi.local "cd ~/intervals-mcp && npm ci && npm run build && sudo systemctl restart intervals-mcp"
 ```
+
+L'URL del tunnel non cambia con un deploy — solo `intervals-mcp` viene riavviato.
+
+### Comandi utili
+
+| Cosa | Comando |
+|---|---|
+| Stato server | `sudo systemctl status intervals-mcp` |
+| Stato tunnel | `sudo systemctl status cloudflared` |
+| URL tunnel | `sudo journalctl -u cloudflared --no-pager \| grep trycloudflare` |
+| Riavviare server | `sudo systemctl restart intervals-mcp` |
+| Spegnere Pi | `sudo shutdown now` |
+| Riavviare Pi | `sudo reboot` |
 
 ### Alternativa: Render (cloud, con cold start)
 
