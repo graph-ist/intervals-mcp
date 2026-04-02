@@ -2,17 +2,29 @@ const BASE = "https://intervals.icu/api/v1";
 
 import type {
   Activity,
+  ActivityPowerCurvePayload,
   ActivityStreams,
+  ActivityWeatherSummary,
   Athlete,
   AthleteSummary,
+  BestEfforts,
   CalendarEvent,
   CurveResponse,
+  FitnessModelEvent,
   Folder,
+  Gear,
+  HistogramBucket,
+  IntervalsDTO,
+  MapData,
   PowerCurveResponse,
   PowerHRCurve,
+  PowerModel,
   PowerVsHRData,
   SportSettings,
+  TrainingPlan,
+  WeatherForecast,
   WellnessDay,
+  Workout,
 } from "./types.js";
 
 let apiKey: string;
@@ -128,3 +140,70 @@ export async function uploadActivity(fileData: Buffer, filename: string) {
   formData.append("file", new File([new Uint8Array(fileData)], filename));
   return api("POST", ath("/activities"), { form: formData });
 }
+
+// ---------- NEW API functions ----------
+
+// HIGH priority
+export const updateActivity = (id: string, payload: Record<string, unknown>) =>
+  api<Activity>("PUT", act(id), { body: payload });
+export const getActivityIntervals = (id: string) => api<IntervalsDTO>(G, act(id, "/intervals"));
+export function getActivityBestEfforts(
+  id: string,
+  opts: { stream: string; duration?: number; distance?: number; count?: number },
+) {
+  const params = [`stream=${opts.stream}`];
+  if (opts.duration) params.push(`duration=${opts.duration}`);
+  if (opts.distance) params.push(`distance=${opts.distance}`);
+  if (opts.count) params.push(`count=${opts.count}`);
+  return api<BestEfforts>(G, act(id, `/best-efforts?${params.join("&")}`));
+}
+export const getWeatherForecast = () => api<WeatherForecast>(G, ath("/weather-forecast"));
+export function searchIntervals(opts: {
+  minSecs: number;
+  maxSecs: number;
+  minIntensity: number;
+  maxIntensity: number;
+  type?: string;
+  minReps?: number;
+  maxReps?: number;
+  limit?: number;
+}) {
+  const params = [
+    `minSecs=${opts.minSecs}`,
+    `maxSecs=${opts.maxSecs}`,
+    `minIntensity=${opts.minIntensity}`,
+    `maxIntensity=${opts.maxIntensity}`,
+  ];
+  if (opts.type) params.push(`type=${opts.type}`);
+  if (opts.minReps) params.push(`minReps=${opts.minReps}`);
+  if (opts.maxReps) params.push(`maxReps=${opts.maxReps}`);
+  if (opts.limit) params.push(`limit=${opts.limit}`);
+  return api<Activity[]>(G, ath(`/activities/interval-search?${params.join("&")}`));
+}
+export const getTrainingPlan = () => api<TrainingPlan>(G, ath("/training-plan"));
+export const getGear = () => api<Gear[]>(G, ath("/gear"));
+export const duplicateEvents = (eventIds: number[], numCopies: number, weeksBetween: number) =>
+  api<CalendarEvent[]>("POST", ath("/duplicate-events"), { body: { eventIds, numCopies, weeksBetween } });
+export function getActivityPowerCurvesRange(oldest: string, newest: string, sport?: string, secs?: number[]) {
+  let url = ath(`/activity-power-curves?oldest=${oldest}&newest=${newest}`);
+  if (sport) url += `&type=${sport}`;
+  if (secs?.length) url += `&secs=${secs.join(",")}`;
+  return api<ActivityPowerCurvePayload>(G, url);
+}
+export const deleteActivity = (id: string) => api("DELETE", act(id));
+
+// MEDIUM priority
+export const getActivityMap = (id: string) => api<MapData>(G, act(id, "/map"));
+export const getActivityWeather = (id: string) => api<ActivityWeatherSummary>(G, act(id, "/weather-summary"));
+export const getActivityPowerHistogram = (id: string, bucketSize?: number) =>
+  api<HistogramBucket[]>(G, act(id, `/power-histogram${bucketSize ? `?bucketSize=${bucketSize}` : ""}`));
+export const getMMPModel = (sport: string) => api<PowerModel>(G, ath(`/mmp-model?type=${sport}`));
+export const getFitnessModelEvents = () => api<FitnessModelEvent[]>(G, ath("/fitness-model-events"));
+export const getActivityTags = () => api<string[]>(G, ath("/activity-tags"));
+export const createManualActivity = (payload: Record<string, unknown>) =>
+  api<Activity>("POST", ath("/activities/manual"), { body: payload });
+export const getWorkouts = () => api<Workout[]>(G, ath("/workouts"));
+export const updateActivityIntervals = (id: string, intervals: Record<string, unknown>[], replaceAll = true) =>
+  api<IntervalsDTO>("PUT", act(id, `/intervals?all=${replaceAll}`), { body: intervals });
+export const bulkDeleteEvents = (events: { id?: number; external_id?: string }[]) =>
+  api("PUT", ath("/events/bulk-delete"), { body: events });

@@ -579,5 +579,250 @@ Do NOT use prose descriptions like "90 min Z2 puro. Potenza 155-178W" — always
     },
   );
 
-  return { mcpServer: server, toolCount: 30, promptCount: 4, version: VERSION };
+  // ======================== HIGH PRIORITY TOOLS ========================
+
+  // --- update_activity ---
+  server.tool(
+    "update_activity",
+    "Update an activity: rename, tag, set RPE/feel, change type, add description, etc.",
+    {
+      activity_id: z.string().describe("Activity ID"),
+      updates: z
+        .record(z.string(), z.unknown())
+        .describe(
+          "Fields to update: name, type, description, perceived_exertion (1-10), feel (1-5), tags (string[]), icu_ignore_time, sub_type (NONE/COMMUTE/WARMUP/COOLDOWN/RACE), etc.",
+        ),
+    },
+    ({ activity_id, updates }) => safe(() => icu.updateActivity(activity_id, updates)),
+  );
+
+  // --- get_activity_intervals ---
+  server.tool(
+    "get_activity_intervals",
+    "Get detailed interval data for an activity: work/recovery intervals with avg power, HR, cadence, pace, zone, distance, training load per interval",
+    { activity_id: z.string().describe("Activity ID") },
+    ({ activity_id }) => safe(() => icu.getActivityIntervals(activity_id)),
+  );
+
+  // --- get_activity_best_efforts ---
+  server.tool(
+    "get_activity_best_efforts",
+    "Find best efforts in an activity for a given duration or distance. Returns top N segments ranked by average value.",
+    {
+      activity_id: z.string().describe("Activity ID"),
+      stream: z.string().describe("Stream to search: watts, heartrate, velocity_smooth, cadence"),
+      duration: z.number().optional().describe("Duration of each effort in seconds"),
+      distance: z.number().optional().describe("Distance of each effort in meters"),
+      count: z.number().optional().describe("Number of efforts to return (default 8)"),
+    },
+    ({ activity_id, stream, duration, distance, count }) =>
+      safe(() => icu.getActivityBestEfforts(activity_id, { stream, duration, distance, count })),
+  );
+
+  // --- get_weather_forecast ---
+  server.tool(
+    "get_weather_forecast",
+    "Get weather forecast for the athlete's configured locations. Use to plan outdoor workouts.",
+    {},
+    () => safe(() => icu.getWeatherForecast()),
+  );
+
+  // --- search_intervals ---
+  server.tool(
+    "search_intervals",
+    "Search historical activities for intervals matching duration and intensity criteria. Find all activities with e.g. '5min efforts at 90-100% FTP'. Returns matching activities most recent first.",
+    {
+      min_secs: z.number().describe("Minimum interval duration in seconds"),
+      max_secs: z.number().describe("Maximum interval duration in seconds"),
+      min_intensity: z.number().describe("Minimum intensity percentage (of FTP)"),
+      max_intensity: z.number().describe("Maximum intensity percentage (of FTP)"),
+      type: z.enum(["AUTO", "POWER", "HR", "PACE"]).optional().describe("Interval type filter"),
+      min_reps: z.number().optional().describe("Minimum number of matching intervals"),
+      max_reps: z.number().optional().describe("Maximum number of matching intervals"),
+      limit: z.number().optional().describe("Max results (default 30)"),
+    },
+    ({ min_secs, max_secs, min_intensity, max_intensity, type, min_reps, max_reps, limit }) =>
+      safe(() =>
+        icu.searchIntervals({
+          minSecs: min_secs,
+          maxSecs: max_secs,
+          minIntensity: min_intensity,
+          maxIntensity: max_intensity,
+          type,
+          minReps: min_reps,
+          maxReps: max_reps,
+          limit,
+        }),
+      ),
+  );
+
+  // --- get_training_plan ---
+  server.tool(
+    "get_training_plan",
+    "Get the athlete's current assigned training plan (folder, start date, last applied)",
+    {},
+    () => safe(() => icu.getTrainingPlan()),
+  );
+
+  // --- get_gear ---
+  server.tool(
+    "get_gear",
+    "Get athlete's gear: bikes, shoes, equipment with distance/time/activities tracked and maintenance reminders",
+    {},
+    () => safe(() => icu.getGear()),
+  );
+
+  // --- duplicate_events ---
+  server.tool(
+    "duplicate_events",
+    "Duplicate one or more calendar events (workouts, notes). Use to copy a week of training by passing all event IDs.",
+    {
+      event_ids: z.array(z.number()).describe("Event IDs to duplicate"),
+      num_copies: z.number().describe("Number of copies to create"),
+      weeks_between: z.number().describe("Weeks between each copy"),
+    },
+    ({ event_ids, num_copies, weeks_between }) => safe(() => icu.duplicateEvents(event_ids, num_copies, weeks_between)),
+  );
+
+  // --- get_activity_power_curves_range ---
+  server.tool(
+    "get_activity_power_curves_range",
+    "Get best power for each activity in a date range at specific durations. Use to track power progression over time (e.g. see 5min power trend across all rides).",
+    {
+      oldest: dateStr.describe("Start date YYYY-MM-DD"),
+      newest: dateStr.describe("End date YYYY-MM-DD"),
+      sport: z.string().optional().describe("Sport type: Ride (default), Run, etc."),
+      secs: z.array(z.number()).optional().describe("Specific durations in seconds (e.g. [5, 60, 300, 1200])"),
+    },
+    ({ oldest, newest, sport, secs }) => safe(() => icu.getActivityPowerCurvesRange(oldest, newest, sport, secs)),
+  );
+
+  // --- delete_activity ---
+  server.tool(
+    "delete_activity",
+    "Delete an activity from intervals.icu. This action is irreversible.",
+    {
+      activity_id: z.string().describe("Activity ID to delete"),
+    },
+    ({ activity_id }) => safe(() => icu.deleteActivity(activity_id)),
+  );
+
+  // ======================== MEDIUM PRIORITY TOOLS ========================
+
+  // --- get_activity_map ---
+  server.tool(
+    "get_activity_map",
+    "Get GPS map data for an activity: bounds and lat/lng coordinates for the route",
+    { activity_id: z.string().describe("Activity ID") },
+    ({ activity_id }) => safe(() => icu.getActivityMap(activity_id)),
+  );
+
+  // --- get_activity_weather ---
+  server.tool(
+    "get_activity_weather",
+    "Get weather conditions during an activity: temperature, wind speed/direction, rain, headwind/tailwind percentage",
+    { activity_id: z.string().describe("Activity ID") },
+    ({ activity_id }) => safe(() => icu.getActivityWeather(activity_id)),
+  );
+
+  // --- get_activity_power_histogram ---
+  server.tool(
+    "get_activity_power_histogram",
+    "Get power distribution histogram for an activity: time spent in each power bucket",
+    {
+      activity_id: z.string().describe("Activity ID"),
+      bucket_size: z.number().optional().describe("Watts per bucket (default 25)"),
+    },
+    ({ activity_id, bucket_size }) => safe(() => icu.getActivityPowerHistogram(activity_id, bucket_size)),
+  );
+
+  // --- get_mmp_model ---
+  server.tool(
+    "get_mmp_model",
+    "Get the athlete's power-duration model (Critical Power, W', Pmax, FTP) used to resolve %MMP workout steps",
+    {
+      sport: z.string().optional().describe("Sport type: Ride (default), Run, etc."),
+    },
+    ({ sport }) => safe(() => icu.getMMPModel(sport ?? "Ride")),
+  );
+
+  // --- get_fitness_model_events ---
+  server.tool(
+    "get_fitness_model_events",
+    "Get events that influence the fitness model: eFTP changes, fitness resets, season starts, custom CTL/ATL days",
+    {},
+    () => safe(() => icu.getFitnessModelEvents()),
+  );
+
+  // --- get_activity_tags ---
+  server.tool("get_activity_tags", "List all tags that have been applied to the athlete's activities", {}, () =>
+    safe(() => icu.getActivityTags()),
+  );
+
+  // --- create_manual_activity ---
+  server.tool(
+    "create_manual_activity",
+    "Create a manual activity (e.g. strength training, yoga, activities without a device file)",
+    {
+      type: z.string().describe("Sport type: WeightTraining, Yoga, Hike, Swim, Run, Ride, etc."),
+      name: z.string().describe("Activity name"),
+      start_date_local: z.string().describe("Start date/time ISO-8601 (e.g. 2025-01-15T08:00:00)"),
+      moving_time: z.number().optional().describe("Duration in seconds"),
+      distance: z.number().optional().describe("Distance in meters"),
+      description: z.string().optional().describe("Activity description/notes"),
+      perceived_exertion: z.number().optional().describe("RPE 1-10"),
+      extra: z
+        .record(z.string(), z.unknown())
+        .optional()
+        .describe("Additional fields (icu_training_load, average_heartrate, calories, kg_lifted, etc.)"),
+    },
+    ({ type, name, start_date_local, moving_time, distance, description, perceived_exertion, extra }) =>
+      safe(() =>
+        icu.createManualActivity({
+          type,
+          name,
+          start_date_local,
+          ...(moving_time !== undefined && { moving_time }),
+          ...(distance !== undefined && { distance }),
+          ...(description !== undefined && { description }),
+          ...(perceived_exertion !== undefined && { perceived_exertion }),
+          ...extra,
+        }),
+      ),
+  );
+
+  // --- get_workouts ---
+  server.tool(
+    "get_workouts",
+    "List all workouts in the athlete's workout library (templates, not calendar events)",
+    {},
+    () => safe(() => icu.getWorkouts()),
+  );
+
+  // --- update_activity_intervals ---
+  server.tool(
+    "update_activity_intervals",
+    "Update or replace intervals for an activity. Use to manually define work/recovery segments.",
+    {
+      activity_id: z.string().describe("Activity ID"),
+      intervals: z
+        .array(z.record(z.string(), z.unknown()))
+        .describe("Array of interval objects with start_index, end_index, type (WORK/RECOVERY), label, etc."),
+      replace_all: z.boolean().optional().describe("Replace all existing intervals (default true) or merge"),
+    },
+    ({ activity_id, intervals, replace_all }) =>
+      safe(() => icu.updateActivityIntervals(activity_id, intervals, replace_all ?? true)),
+  );
+
+  // --- bulk_delete_events ---
+  server.tool(
+    "bulk_delete_events",
+    "Delete multiple calendar events at once by ID",
+    {
+      events: z.array(z.object({ id: z.number().describe("Event ID") })).describe("Array of events to delete"),
+    },
+    ({ events }) => safe(() => icu.bulkDeleteEvents(events)),
+  );
+
+  return { mcpServer: server, toolCount: 50, promptCount: 4, version: VERSION };
 }

@@ -134,3 +134,165 @@ export interface PowerHRCurve {
   heartrate?: number[];
   [key: string]: unknown;
 }
+
+/** Intervals DTO (GET /activity/{id}/intervals) */
+export interface IntervalsDTO {
+  id?: string;
+  icu_intervals?: Interval[];
+  icu_groups?: IntervalGroup[];
+  [key: string]: unknown;
+}
+
+export interface Interval {
+  id?: number;
+  type?: string;
+  start_index?: number;
+  end_index?: number;
+  moving_time?: number;
+  average_watts?: number;
+  average_heartrate?: number;
+  average_cadence?: number;
+  average_speed?: number;
+  distance?: number;
+  intensity?: number;
+  training_load?: number;
+  joules?: number;
+  zone?: number;
+  label?: string;
+  gap?: number;
+  decoupling?: number;
+  [key: string]: unknown;
+}
+
+export interface IntervalGroup {
+  id?: string;
+  count?: number;
+  moving_time?: number;
+  average_watts?: number;
+  average_heartrate?: number;
+  [key: string]: unknown;
+}
+
+/** Best efforts (GET /activity/{id}/best-efforts) */
+export interface BestEfforts {
+  efforts?: Effort[];
+}
+
+export interface Effort {
+  start_index?: number;
+  end_index?: number;
+  average?: number;
+  duration?: number;
+  distance?: number;
+}
+
+/** Weather forecast (GET /athlete/{id}/weather-forecast) */
+export interface WeatherForecast {
+  forecasts?: ForecastItem[];
+  [key: string]: unknown;
+}
+
+export interface ForecastItem {
+  id?: number;
+  location?: string;
+  label?: string;
+  lat?: number;
+  lon?: number;
+  [key: string]: unknown;
+}
+
+/** Training plan (GET /athlete/{id}/training-plan) */
+export interface TrainingPlan {
+  athlete_id?: string;
+  training_plan_id?: number;
+  training_plan_start_date?: string;
+  training_plan?: Folder;
+  [key: string]: unknown;
+}
+
+/** Gear (GET /athlete/{id}/gear) */
+export interface Gear {
+  id?: string;
+  name?: string;
+  type?: string;
+  distance?: number;
+  time?: number;
+  activities?: number;
+  retired?: string;
+  reminders?: GearReminder[];
+  [key: string]: unknown;
+}
+
+export interface GearReminder {
+  id?: number;
+  name?: string;
+  distance?: number;
+  time?: number;
+  percent_used?: number;
+  [key: string]: unknown;
+}
+
+/** Activity power curves in date range */
+export interface ActivityPowerCurvePayload {
+  secs?: number[];
+  curves?: ActivityPowerCurve[];
+  [key: string]: unknown;
+}
+
+export interface ActivityPowerCurve {
+  id?: string;
+  start_date_local?: string;
+  watts?: number[];
+  [key: string]: unknown;
+}
+
+/** Map data (GET /activity/{id}/map) */
+export interface MapData {
+  bounds?: number[][];
+  latlngs?: number[][];
+  [key: string]: unknown;
+}
+
+/** Activity weather summary */
+export interface ActivityWeatherSummary {
+  average_temp?: number;
+  average_weather_temp?: number;
+  average_feels_like?: number;
+  average_wind_speed?: number;
+  average_wind_gust?: number;
+  prevailing_wind_deg?: number;
+  headwind_percent?: number;
+  tailwind_percent?: number;
+  max_rain?: number;
+  [key: string]: unknown;
+}
+
+/** Power histogram bucket */
+export interface HistogramBucket {
+  start?: number;
+  secs?: number;
+  movingSecs?: number;
+  watts?: number;
+  hr?: number;
+  cadence?: number;
+}
+
+/** Workout from library */
+export interface Workout {
+  id?: number;
+  name?: string;
+  description?: string;
+  type?: string;
+  folder_id?: number;
+  moving_time?: number;
+  icu_training_load?: number;
+  [key: string]: unknown;
+}
+
+/** Fitness model events */
+export interface FitnessModelEvent {
+  id?: number;
+  category?: string;
+  start_date_local?: string;
+  [key: string]: unknown;
+}
