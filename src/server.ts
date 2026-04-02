@@ -7,10 +7,14 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import * as icu from "./intervals.js";
 import { computeDecoupling } from "./tools/decoupling.js";
+import { computeDfaAnalysis } from "./tools/dfa-alpha1.js";
 import { computeDfrc } from "./tools/dfrc.js";
+import { computeFatigueResistance } from "./tools/fatigue-resistance.js";
 import { computeMetabolicProfile } from "./tools/metabolic.js";
+import { computePolarization } from "./tools/polarization.js";
 import { computeRecoveryIndex } from "./tools/recovery.js";
 import { computeTrainingLoadRisk } from "./tools/training-load.js";
+import { computeTrends } from "./tools/trends.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const pkg = JSON.parse(readFileSync(join(__dirname, "..", "package.json"), "utf-8"));
@@ -824,5 +828,83 @@ Do NOT use prose descriptions like "90 min Z2 puro. Potenza 155-178W" — always
     ({ events }) => safe(() => icu.bulkDeleteEvents(events)),
   );
 
-  return { mcpServer: server, toolCount: 50, promptCount: 4, version: VERSION };
+  // --- get_fatigue_resistance ---
+  server.tool(
+    "get_fatigue_resistance",
+    "Durability analysis: compare fresh vs fatigued power curves to quantify power retention under fatigue. Computes Fatigue Resistance Score (FRS) at key durations (5s to 60min). Based on Maunder et al. (2021) durability framework. FRS > 90% = excellent durability. IMPORTANT: always interpret every numeric value using the reference_ranges in the response.",
+    {
+      sport: z.string().optional().describe("Sport type (default Ride)"),
+      curve_type: z.string().optional().describe("Curve period, e.g. '42d', '1y', 'season' (default '42d')"),
+    },
+    async ({ sport, curve_type }) => {
+      try {
+        const result = await computeFatigueResistance(sport, curve_type);
+        if (!result) return toolError("Insufficient power curve data for fatigue resistance analysis.");
+        return safeReturn(result);
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        return toolError(`API error: ${msg}`);
+      }
+    },
+  );
+
+  // --- get_dfa_alpha1 ---
+  server.tool(
+    "get_dfa_alpha1",
+    "DFA α1 (Detrended Fluctuation Analysis) threshold detection from an activity's beat-to-beat data. Identifies aerobic threshold (α1=0.75) and anaerobic threshold (α1=0.50) with corresponding power/HR. Requires a device that records DFA α1 (Garmin with FirstBeat, Polar H10 + HRV Logger). Apple Watch does NOT provide this data. Based on Rogers et al. (2021). IMPORTANT: always interpret every numeric value using the reference_ranges in the response.",
+    {
+      activity_id: z.string().describe("Activity ID from a graded ramp test or steady-ramp effort"),
+    },
+    async ({ activity_id }) => {
+      try {
+        const result = await computeDfaAnalysis(activity_id);
+        return safeReturn(result);
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        return toolError(`API error: ${msg}`);
+      }
+    },
+  );
+
+  // --- get_polarization_analysis ---
+  server.tool(
+    "get_polarization_analysis",
+    "Training intensity distribution and polarization analysis. Aggregates time-in-zone across activities to evaluate training polarity against the 80/20 model (Seiler 2010, Stöggl & Sperlich 2015). Detects 'black hole' training (excessive Z3). Calculates Polarization Index and zone breakdown. IMPORTANT: always interpret every numeric value using the reference_ranges in the response.",
+    {
+      days: z.number().optional().describe("Days to analyze (default 28)"),
+      sport: z.string().optional().describe("Sport type (default Ride)"),
+    },
+    async ({ days, sport }) => {
+      try {
+        const result = await computePolarization(days ?? 28, sport ?? "Ride");
+        if (!result) return toolError("No activities found with zone data for this sport/period.");
+        return safeReturn(result);
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        return toolError(`API error: ${msg}`);
+      }
+    },
+  );
+
+  // --- get_longitudinal_trends ---
+  server.tool(
+    "get_longitudinal_trends",
+    "Longitudinal trend analysis for key performance and recovery markers. Tracks EF (efficiency factor), power, HRR (heart rate recovery), decoupling, CTL, HRV, resting HR, weight, and sleep over time using linear regression. Flags significant changes indicating progression, overreaching, or stagnation. Includes HRR trend (Daanen et al., 2012). IMPORTANT: always interpret every value using the direction and change_pct fields.",
+    {
+      days: z.number().optional().describe("Days of history to analyze (default 90, min 14)"),
+      sport: z.string().optional().describe("Sport type for activity metrics (default Ride)"),
+    },
+    async ({ days, sport }) => {
+      try {
+        const result = await computeTrends(days ?? 90, sport ?? "Ride");
+        if (!result) return toolError("Insufficient data for trend analysis (need ≥ 3 data points).");
+        return safeReturn(result);
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        return toolError(`API error: ${msg}`);
+      }
+    },
+  );
+
+  return { mcpServer: server, toolCount: 54, promptCount: 4, version: VERSION };
 }

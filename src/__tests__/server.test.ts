@@ -5,7 +5,7 @@ describe("createServer", () => {
   it("returns server with expected tool and prompt counts", () => {
     const result = createServer();
     expect(result.mcpServer).toBeDefined();
-    expect(result.toolCount).toBe(50);
+    expect(result.toolCount).toBe(54);
     expect(result.promptCount).toBe(4);
   });
 

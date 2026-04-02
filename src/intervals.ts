@@ -101,8 +101,11 @@ export function getEvents(oldest: string, newest: string, category?: string) {
 }
 
 export const createEvent = (payload: Record<string, unknown>) => api("POST", ath("/events"), { body: payload });
-export const getPowerCurves = (sportType: string, curves: string[]) =>
-  api<PowerCurveResponse>(G, ath(`/power-curves?type=${sportType}&curves=${curves.join(",")}`));
+export const getPowerCurves = (sportType: string, curves: string[], fatigue?: string) => {
+  let url = ath(`/power-curves?type=${sportType}&curves=${curves.join(",")}`);
+  if (fatigue) url += `&fatigue=${fatigue}`;
+  return api<PowerCurveResponse>(G, url);
+};
 export const getPaceCurves = (sportType: string, curves: string[]) =>
   api<CurveResponse>(G, ath(`/pace-curves?type=${sportType}&curves=${curves.join(",")}`));
 export const getHRCurves = (sportType: string, curves: string[]) =>

@@ -29,6 +29,13 @@ const METRICS: [keyof WellnessDay, boolean][] = [
   ["baevskySI", false],
   ["spO2", true],
   ["respiration", false],
+  // Subjective fields — included when the athlete fills them in (1-5 scale)
+  ["mood", true],
+  ["motivation", true],
+  ["fatigue", false], // higher fatigue = worse
+  ["soreness", false], // higher soreness = worse
+  ["stress", false], // higher stress = worse
+  ["injury", false], // higher injury = worse
 ];
 
 const WEIGHTS: Record<string, number> = {
@@ -40,6 +47,13 @@ const WEIGHTS: Record<string, number> = {
   baevskySI: 2,
   spO2: 1,
   respiration: 1,
+  // Subjective: lower weight individually but collectively significant (Saw et al., 2016)
+  mood: 1,
+  motivation: 1,
+  fatigue: 1,
+  soreness: 1,
+  stress: 1,
+  injury: 1,
 };
 
 function stats(arr: number[]): { mean: number; sd: number } {
@@ -159,6 +173,12 @@ export async function computeRecoveryIndex(days: number, daysAgo: (n: number) =>
   }
 
   const todayResult = results[results.length - 1];
+
+  // Count how many days have subjective data filled in
+  const SUBJECTIVE_KEYS = ["mood", "motivation", "fatigue", "soreness", "stress", "injury"];
+  const subjectiveDays = results.filter((r) => SUBJECTIVE_KEYS.some((k) => r.metrics[k] != null)).length;
+  const hasSubjective = subjectiveDays > 0;
+  const subjectiveFields = SUBJECTIVE_KEYS.filter((k) => todayResult?.metrics[k] != null);
   return {
     today: todayResult,
     period_days: results.length,
@@ -167,6 +187,14 @@ export async function computeRecoveryIndex(days: number, daysAgo: (n: number) =>
         (results.filter((r) => r.recovery_index != null).length || 1),
     ),
     red_flag_days: results.filter((r) => (r.red_flags?.length ?? 0) > 0).length,
+    subjective_data: {
+      available: hasSubjective,
+      days_with_data: subjectiveDays,
+      today_fields: subjectiveFields,
+      note: hasSubjective
+        ? `Subjective data included (${subjectiveFields.length}/6 fields today). RI accuracy improved.`
+        : "No subjective data found. Fill mood/fatigue/soreness/motivation/stress in intervals.icu wellness for better accuracy (Saw et al., 2016).",
+    },
     history: results.slice(-7),
     reference_ranges: {
       recovery_index: [

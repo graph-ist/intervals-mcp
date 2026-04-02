@@ -3,7 +3,7 @@
 [![CI](https://github.com/graph-ist/intervals-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/graph-ist/intervals-mcp/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-MCP server per [intervals.icu](https://intervals.icu) — 30 tool per accedere ai tuoi dati di allenamento da Claude.
+MCP server per [intervals.icu](https://intervals.icu) — 54 tool per accedere ai tuoi dati di allenamento da Claude.
 
 ## Setup
 
@@ -35,18 +35,22 @@ npm run check       # Build + lint + test (tutto)
 
 ```
 src/
-├── server.ts           # MCP server: 30 tool, 4 prompt
+├── server.ts           # MCP server: 54 tool, 4 prompt
 ├── intervals.ts        # Client HTTP per intervals.icu API
 ├── types.ts            # Tipi TypeScript per le risposte API
 ├── http.ts             # Transport HTTP/Express (remote)
 ├── stdio.ts            # Transport stdio (Claude Desktop)
 └── tools/
-    ├── decoupling.ts   # Decoupling aerobico Pw:Hr
-    ├── dfrc.ts         # dFRC / W'bal (Skiba)
-    ├── metabolic.ts    # Profilo metabolico (VLaMax, Coggan)
-    ├── recovery.ts     # Indice di recupero composito
-    ├── training-load.ts # Rischio carico (Monotony, ACWR)
-    ├── utils.ts        # Utility condivise (extractStream)
+    ├── decoupling.ts       # Decoupling aerobico Pw:Hr
+    ├── dfa-alpha1.ts       # DFA α1 threshold detection
+    ├── dfrc.ts             # dFRC / W'bal (Skiba)
+    ├── fatigue-resistance.ts # Durability: fresh vs fatigued power curves
+    ├── metabolic.ts        # Profilo metabolico (VLaMax, Coggan)
+    ├── polarization.ts     # Distribuzione intensità e polarizzazione
+    ├── recovery.ts         # Indice di recupero composito (+ soggettivo)
+    ├── training-load.ts    # Rischio carico (Monotony, ACWR)
+    ├── trends.ts           # Trend longitudinali + HRR
+    ├── utils.ts            # Utility condivise (extractStream)
     └── __tests__/
         └── tools.test.ts
 ```
@@ -215,9 +219,9 @@ Per usarlo con claude.ai Integrations serve un URL pubblico HTTPS — usa il dep
 
 ## Modelli matematici
 
-I tool custom `get_activity_dfrc`, `get_metabolic_profile`, `get_recovery_index`, `get_training_load_risk` e `get_aerobic_decoupling` implementano modelli fisiologici con scelte specifiche di costanti e formulazioni. Tutta la documentazione matematica, i riferimenti alla letteratura e il confronto critico con le implementazioni commerciali (INSCYD, WKO5) sono in **[MODELS.md](MODELS.md)**.
+I tool custom `get_activity_dfrc`, `get_metabolic_profile`, `get_recovery_index`, `get_training_load_risk`, `get_aerobic_decoupling`, `get_fatigue_resistance`, `get_dfa_alpha1`, `get_polarization_analysis` e `get_longitudinal_trends` implementano modelli fisiologici con scelte specifiche di costanti e formulazioni. Tutta la documentazione matematica, i riferimenti alla letteratura e il confronto critico con le implementazioni commerciali (INSCYD, WKO5) sono in **[MODELS.md](MODELS.md)**.
 
-## Tool disponibili (30)
+## Tool disponibili (54)
 
 ### 👤 Atleta e impostazioni
 
@@ -236,6 +240,14 @@ I tool custom `get_activity_dfrc`, `get_metabolic_profile`, `get_recovery_index`
 | `get_activity_detail` | Dettagli completi di un'attività |
 | `get_activity_streams` | Dati time-series (potenza, HR, passo, ecc.) |
 | `upload_activity` | Upload file attività (FIT, TCX, GPX) |
+| `update_activity` | Modifica metadati di un'attività (nome, tipo, descrizione, ecc.) |
+| `delete_activity` | Elimina un'attività |
+| `get_activity_intervals` | Intervalli strutturati di un'attività |
+| `update_activity_intervals` | Aggiorna/sostituisce intervalli manuali |
+| `get_activity_best_efforts` | Migliori sforzi per durata/distanza |
+| `search_intervals` | Cerca intervalli per durata/intensità |
+| `create_manual_activity` | Crea attività manuale (ore, TSS, ecc.) |
+| `get_activity_tags` | Lista tag attività disponibili |
 
 ### 📈 Curve e analisi attività
 
@@ -245,18 +257,32 @@ I tool custom `get_activity_dfrc`, `get_metabolic_profile`, `get_recovery_index`
 | `get_activity_pace_curve` | Pace curve di un'attività |
 | `get_activity_hr_curve` | HR curve di un'attività |
 | `get_activity_power_vs_hr` | Power vs HR raw scatter (efficienza aerobica) |
-| `get_aerobic_decoupling` | Decoupling Pw:Hr calcolato: drift % 1ª vs 2ª metà, EF curve, assessment |
-| `get_activity_dfrc` | Calcolo dFRC/W'bal di un'attività (modello Skiba) |
+| `get_aerobic_decoupling` | Decoupling Pw:Hr: drift % 1ª vs 2ª metà, EF curve, assessment |
+| `get_activity_dfrc` | dFRC/W'bal di un'attività (modello Skiba) |
+| `get_activity_power_histogram` | Distribuzione potenza a barre |
+| `get_activity_map` | Dati mappa/GPS |
+| `get_activity_weather` | Condizioni meteo durante l'attività |
 
 ### 📊 Curve e profilo fisiologico
 
 | Tool | Descrizione |
 |---|---|
-| `get_power_curves` | Power curve (stagione, recenti) |
+| `get_power_curves` | Power curve (stagione, recenti, fatigued) |
 | `get_pace_curves` | Pace curve |
 | `get_hr_curves` | HR curve |
 | `get_power_hr_curve` | Trend efficienza aerobica |
 | `get_metabolic_profile` | Profilo metabolico: VLaMax (Mader), energy breakdown, Coggan power profile, FRI |
+| `get_mmp_model` | Modello MMP (CP, W', pMax) |
+| `get_activity_power_curves_range` | Power curve per periodo (confronto attività) |
+
+### 🔬 Analisi scientifiche avanzate
+
+| Tool | Descrizione |
+|---|---|
+| `get_fatigue_resistance` | **Durability**: confronta power curve fresche vs affaticate. Fatigue Resistance Score, ritenzione VO₂max. Basato su Maunder et al. (2021) |
+| `get_dfa_alpha1` | **DFA α1**: soglie aerobica (α1=0.75) e anaerobica (α1=0.50) da dati beat-to-beat. Richiede fascia toracica compatibile. Rogers et al. (2021) |
+| `get_polarization_analysis` | **Polarizzazione**: distribuzione tempo nelle zone, indice di polarizzazione, confronto con modello 80/20. Seiler (2010), Stöggl & Sperlich (2015) |
+| `get_longitudinal_trends` | **Trend longitudinali**: regressione lineare su EF, potenza, HRR, decoupling, CTL, HRV, FC riposo, peso, sonno. Segnala progressioni e sovraffaticamento |
 
 ### 💚 Wellness e fitness
 
@@ -264,9 +290,11 @@ I tool custom `get_activity_dfrc`, `get_metabolic_profile`, `get_recovery_index`
 |---|---|
 | `get_wellness_data` | Wellness: CTL, ATL, TSB, HRV, sonno, umore |
 | `update_wellness` | Aggiorna dati wellness per data (peso, HRV, sonno, umore) |
-| `get_recovery_index` | **Stato di recupero**: calcola un indice composito 0-100 analizzando HRV, FC a riposo, sonno, Baevsky SI, SpO₂ e frequenza respiratoria rispetto alla tua baseline individuale (z-score 30 giorni). Segnala red flag e trend. → "Come stai oggi? Puoi allenarti forte?" |
-| `get_training_load_risk` | **Rischio da carico**: analizza Monotony (variabilità del carico — carichi troppo uguali = rischio), Strain (carico cumulativo), ACWR (rapporto carico acuto/cronico) e spike di volume. → "Stai aumentando troppo in fretta? Rischio infortunio?" |
-| `get_fitness_summary` | **Volume e carico totali**: ore, km, TSS e numero attività per sport in un periodo. Sono i *numeri grezzi* di cosa hai fatto, non come il corpo ha risposto (per quello → recovery_index) né il rischio (→ training_load_risk) |
+| `get_recovery_index` | **Stato di recupero**: indice composito 0-100 da HRV, FC riposo, sonno, Baevsky SI, SpO₂, respirazione + dati soggettivi (umore, motivazione, fatica, dolori, stress, infortuni). Baseline individuale (z-score 30gg). → "Come stai oggi? Puoi allenarti forte?" |
+| `get_training_load_risk` | **Rischio da carico**: Monotony, Strain (Foster 1998), ACWR (Gabbett 2016), spike di volume. → "Stai aumentando troppo in fretta?" |
+| `get_fitness_summary` | **Volume e carico totali**: ore, km, TSS e numero attività per sport in un periodo |
+| `get_weather_forecast` | Previsioni meteo per la tua posizione |
+| `get_fitness_model_events` | Eventi del modello fitness (CTL/ATL/TSB) |
 
 ### 📅 Calendario e pianificazione
 
@@ -276,7 +304,12 @@ I tool custom `get_activity_dfrc`, `get_metabolic_profile`, `get_recovery_index`
 | `create_training_plan` | Crea piano allenamento in batch sul calendario |
 | `update_event` | Modifica un evento esistente sul calendario |
 | `delete_event` | Elimina un evento dal calendario |
+| `duplicate_events` | Duplica eventi (ripeti blocchi settimanali) |
+| `bulk_delete_events` | Elimina eventi in batch |
 | `get_folders` | Cartelle libreria workout e piani |
+| `get_training_plan` | Dettagli piano allenamento attivo |
+| `get_workouts` | Libreria workout salvati |
+| `get_gear` | Lista attrezzatura (bici, scarpe, ecc.) con km e manutenzione |
 
 ### 🎨 Visualizzazione
 
@@ -300,9 +333,13 @@ Accessibili da "Add from intervals" in claude.ai o dal menu prompt in Claude Des
 | Domanda | Tool da usare |
 |---|---|
 | "Quanto ho pedalato/corso/nuotato questo mese?" | `get_fitness_summary` — volume e totali grezzi |
-| "Come sto oggi? Posso allenarmi forte?" | `get_recovery_index` — stato recupero fisiologico |
+| "Come sto oggi? Posso allenarmi forte?" | `get_recovery_index` — stato recupero fisiologico (oggettivo + soggettivo) |
 | "Sto aumentando troppo? Rischio infortunio?" | `get_training_load_risk` — pattern e rischio del carico |
 | "Com'è il mio stato di forma generale?" | `get_wellness_data` — dati giornalieri raw (HRV, sonno, peso, umore) |
+| "Sto migliorando o peggiorando?" | `get_longitudinal_trends` — trend su EF, potenza, HRV, HRR, CTL, peso |
+| "Il mio allenamento è ben polarizzato?" | `get_polarization_analysis` — distribuzione intensità vs modello 80/20 |
+| "Quanto reggo sotto fatica?" | `get_fatigue_resistance` — durability, FRS |
+| "Quali sono le mie soglie reali?" | `get_dfa_alpha1` — soglie da DFA α1 (serve fascia toracica compatibile) |
 
 ## Variabili d'ambiente
 
