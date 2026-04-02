@@ -1,41 +1,44 @@
 const BASE = "https://intervals.icu/api/v1";
 
+import type { Activity, ActivityStreams, Athlete, PowerCurveResponse, SportSettings, WellnessDay } from "./types.js";
+
 let apiKey: string;
 let athleteId: string;
+let configured = false;
 
 export function configure(key: string, athlete: string) {
   apiKey = key;
   athleteId = athlete;
+  configured = true;
 }
 
-async function request<T>(path: string): Promise<T> {
-  const res = await fetch(`${BASE}${path}`, {
-    headers: {
-      Authorization: `Basic ${Buffer.from(`API_KEY:${apiKey}`).toString("base64")}`,
-      Accept: "application/json",
-    },
-  });
+// ---------- Unified HTTP helper ----------
+
+type ApiOpts = { body?: unknown; form?: FormData };
+
+async function api<T>(method: string, path: string, opts?: ApiOpts): Promise<T> {
+  const headers: Record<string, string> = {
+    Authorization: `Basic ${Buffer.from(`API_KEY:${apiKey}`).toString("base64")}`,
+  };
+  const init: RequestInit = { method, headers };
+
+  if (opts?.form) {
+    init.body = opts.form; // FormData sets its own Content-Type
+  } else if (opts?.body !== undefined) {
+    headers["Content-Type"] = "application/json";
+    headers.Accept = "application/json";
+    init.body = JSON.stringify(opts.body);
+  } else {
+    headers.Accept = "application/json";
+  }
+
+  if (!configured) throw new Error("intervals.icu client not configured — call configure() first");
+  const res = await fetch(`${BASE}${path}`, init);
   if (!res.ok) {
     const text = await res.text().catch(() => "");
     throw new Error(`intervals.icu ${res.status}: ${text.slice(0, 200)}`);
   }
-  return res.json() as Promise<T>;
-}
-
-async function post<T>(path: string, body: unknown): Promise<T> {
-  const res = await fetch(`${BASE}${path}`, {
-    method: "POST",
-    headers: {
-      Authorization: `Basic ${Buffer.from(`API_KEY:${apiKey}`).toString("base64")}`,
-      "Content-Type": "application/json",
-      Accept: "application/json",
-    },
-    body: JSON.stringify(body),
-  });
-  if (!res.ok) {
-    const text = await res.text().catch(() => "");
-    throw new Error(`intervals.icu ${res.status}: ${text.slice(0, 200)}`);
-  }
+  if (method === "DELETE") return { deleted: true } as T;
   return res.json() as Promise<T>;
 }
 
@@ -47,177 +50,68 @@ function act(id: string, sub = "") {
   return `/activity/${id}${sub}`;
 }
 
+const G = "GET";
+
 // ---------- API functions ----------
 
-export function getAthlete() {
-  return request(ath(""));
-}
-
-export function getActivities(oldest: string, newest: string) {
-  return request(ath(`/activities?oldest=${oldest}&newest=${newest}`));
-}
-
-export function searchActivities(query: string, limit = 10) {
-  return post(ath("/activity-search"), { query, limit });
-}
-
-export function getActivity(id: string, intervals = true) {
-  return request(act(id, `?intervals=${intervals}`));
-}
-
-export function getActivityStreams(id: string, types: string[]) {
-  return request(act(id, `/streams?types=${types.join(",")}`));
-}
-
-export function getActivityPowerCurve(id: string) {
-  return request(act(id, "/power-curve"));
-}
-
-export function getActivityPaceCurve(id: string) {
-  return request(act(id, "/pace-curve"));
-}
-
-export function getActivityHRCurve(id: string) {
-  return request(act(id, "/hr-curve"));
-}
-
-export function getActivityPowerVsHR(id: string) {
-  return request(act(id, "/power-vs-hr"));
-}
-
-export function getWellness(oldest: string, newest: string) {
-  return request(ath(`/wellness?oldest=${oldest}&newest=${newest}`));
-}
+export const getAthlete = () => api<Athlete>(G, ath(""));
+export const getActivities = (oldest: string, newest: string) =>
+  api<Activity[]>(G, ath(`/activities?oldest=${oldest}&newest=${newest}`));
+export const searchActivities = (query: string, limit = 10) =>
+  api<Activity[]>("POST", ath("/activity-search"), { body: { query, limit } });
+export const getActivity = (id: string, intervals = true) => api<Activity>(G, act(id, `?intervals=${intervals}`));
+export const getActivityStreams = (id: string, types: string[]) =>
+  api<ActivityStreams>(G, act(id, `/streams?types=${types.join(",")}`));
+export const getActivityPowerCurve = (id: string) => api<unknown>(G, act(id, "/power-curve"));
+export const getActivityPaceCurve = (id: string) => api<unknown>(G, act(id, "/pace-curve"));
+export const getActivityHRCurve = (id: string) => api<unknown>(G, act(id, "/hr-curve"));
+export const getActivityPowerVsHR = (id: string) => api<unknown>(G, act(id, "/power-vs-hr"));
+export const getWellness = (oldest: string, newest: string) =>
+  api<WellnessDay[]>(G, ath(`/wellness?oldest=${oldest}&newest=${newest}`));
 
 export function getEvents(oldest: string, newest: string, category?: string) {
   let url = ath(`/events?oldest=${oldest}&newest=${newest}`);
   if (category) url += `&category=${category}`;
-  return request(url);
+  return api(G, url);
 }
 
-export function createEvent(payload: Record<string, unknown>) {
-  return post(ath("/events"), payload);
-}
-
-export function getPowerCurves(sportType: string, curves: string[]) {
-  return request(ath(`/power-curves?type=${sportType}&curves=${curves.join(",")}`));
-}
-
-export function getPaceCurves(sportType: string, curves: string[]) {
-  return request(ath(`/pace-curves?type=${sportType}&curves=${curves.join(",")}`));
-}
-
-export function getHRCurves(sportType: string, curves: string[]) {
-  return request(ath(`/hr-curves?type=${sportType}&curves=${curves.join(",")}`));
-}
-
-export function getSportSettings() {
-  return request(ath("/sport-settings"));
-}
-
-export function getAthleteSummary(oldest: string, newest: string) {
-  return request(ath(`/athlete-summary?oldest=${oldest}&newest=${newest}`));
-}
-
-export function getPowerHRCurve(oldest: string, newest: string) {
-  return request(ath(`/power-hr-curve?oldest=${oldest}&newest=${newest}`));
-}
+export const createEvent = (payload: Record<string, unknown>) => api("POST", ath("/events"), { body: payload });
+export const getPowerCurves = (sportType: string, curves: string[]) =>
+  api<PowerCurveResponse>(G, ath(`/power-curves?type=${sportType}&curves=${curves.join(",")}`));
+export const getPaceCurves = (sportType: string, curves: string[]) =>
+  api<unknown>(G, ath(`/pace-curves?type=${sportType}&curves=${curves.join(",")}`));
+export const getHRCurves = (sportType: string, curves: string[]) =>
+  api<unknown>(G, ath(`/hr-curves?type=${sportType}&curves=${curves.join(",")}`));
+export const getSportSettings = () => api<SportSettings | SportSettings[]>(G, ath("/sport-settings"));
+export const getAthleteSummary = (oldest: string, newest: string) =>
+  api<unknown>(G, ath(`/athlete-summary?oldest=${oldest}&newest=${newest}`));
+export const getPowerHRCurve = (oldest: string, newest: string) =>
+  api<unknown>(G, ath(`/power-hr-curve?oldest=${oldest}&newest=${newest}`));
 
 export async function createEvents(events: Record<string, unknown>[]) {
-  const results = [];
-  for (const event of events) {
-    const result = await post(ath("/events"), event);
-    results.push(result);
+  const results: unknown[] = [];
+  // Process in chunks of 5 to avoid rate limits while still parallelizing
+  for (let i = 0; i < events.length; i += 5) {
+    const chunk = events.slice(i, i + 5);
+    const batch = await Promise.all(chunk.map((e) => api("POST", ath("/events"), { body: e })));
+    results.push(...batch);
   }
   return results;
 }
 
-export async function updateEvent(id: number, payload: Record<string, unknown>) {
-  const res = await fetch(`${BASE}${ath(`/events/${id}`)}`, {
-    method: "PUT",
-    headers: {
-      Authorization: `Basic ${Buffer.from(`API_KEY:${apiKey}`).toString("base64")}`,
-      "Content-Type": "application/json",
-      Accept: "application/json",
-    },
-    body: JSON.stringify(payload),
-  });
-  if (!res.ok) {
-    const text = await res.text().catch(() => "");
-    throw new Error(`intervals.icu ${res.status}: ${text.slice(0, 200)}`);
-  }
-  return res.json();
-}
-
-export async function deleteEvent(id: number) {
-  const res = await fetch(`${BASE}${ath(`/events/${id}`)}`, {
-    method: "DELETE",
-    headers: {
-      Authorization: `Basic ${Buffer.from(`API_KEY:${apiKey}`).toString("base64")}`,
-    },
-  });
-  if (!res.ok) {
-    const text = await res.text().catch(() => "");
-    throw new Error(`intervals.icu ${res.status}: ${text.slice(0, 200)}`);
-  }
-  return { deleted: true };
-}
-
-export function createCustomItem(payload: Record<string, unknown>) {
-  return post(ath("/custom-items"), payload);
-}
-
-export function getFolders() {
-  return request(ath("/folders"));
-}
-
-export async function updateSportSettings(type: string, settings: Record<string, unknown>) {
-  const res = await fetch(`${BASE}${ath(`/sport-settings/${type}`)}?recalcHrZones=true`, {
-    method: "PUT",
-    headers: {
-      Authorization: `Basic ${Buffer.from(`API_KEY:${apiKey}`).toString("base64")}`,
-      "Content-Type": "application/json",
-      Accept: "application/json",
-    },
-    body: JSON.stringify(settings),
-  });
-  if (!res.ok) {
-    const text = await res.text().catch(() => "");
-    throw new Error(`intervals.icu ${res.status}: ${text.slice(0, 200)}`);
-  }
-  return res.json();
-}
+export const updateEvent = (id: number, payload: Record<string, unknown>) =>
+  api("PUT", ath(`/events/${id}`), { body: payload });
+export const deleteEvent = (id: number) => api("DELETE", ath(`/events/${id}`));
+export const createCustomItem = (payload: Record<string, unknown>) =>
+  api("POST", ath("/custom-items"), { body: payload });
+export const getFolders = () => api(G, ath("/folders"));
+export const updateSportSettings = (type: string, settings: Record<string, unknown>) =>
+  api("PUT", ath(`/sport-settings/${type}?recalcHrZones=true`), { body: settings });
+export const updateWellness = (date: string, data: Record<string, unknown>) =>
+  api("PUT", ath(`/wellness/${date}`), { body: data });
 
 export async function uploadActivity(fileData: Buffer, filename: string) {
   const formData = new FormData();
   formData.append("file", new File([new Uint8Array(fileData)], filename));
-  const res = await fetch(`${BASE}${ath("/activities")}`, {
-    method: "POST",
-    headers: {
-      Authorization: `Basic ${Buffer.from(`API_KEY:${apiKey}`).toString("base64")}`,
-    },
-    body: formData,
-  });
-  if (!res.ok) {
-    const text = await res.text().catch(() => "");
-    throw new Error(`intervals.icu ${res.status}: ${text.slice(0, 200)}`);
-  }
-  return res.json();
-}
-
-export async function updateWellness(date: string, data: Record<string, unknown>) {
-  const res = await fetch(`${BASE}${ath(`/wellness/${date}`)}`, {
-    method: "PUT",
-    headers: {
-      Authorization: `Basic ${Buffer.from(`API_KEY:${apiKey}`).toString("base64")}`,
-      "Content-Type": "application/json",
-      Accept: "application/json",
-    },
-    body: JSON.stringify(data),
-  });
-  if (!res.ok) {
-    const text = await res.text().catch(() => "");
-    throw new Error(`intervals.icu ${res.status}: ${text.slice(0, 200)}`);
-  }
-  return res.json();
+  return api("POST", ath("/activities"), { form: formData });
 }

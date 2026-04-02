@@ -1,8 +1,8 @@
 #!/usr/bin/env node
-import express from "express";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
-import { createServer } from "./server.js";
+import express from "express";
 import * as icu from "./intervals.js";
+import { createServer } from "./server.js";
 
 const apiKey = process.env.INTERVALS_API_KEY;
 const athleteId = process.env.INTERVALS_ATHLETE_ID ?? "0";
@@ -19,15 +19,41 @@ const app = express();
 app.use(express.json());
 
 // Map to track active transports by session ID
+const MAX_SESSIONS = 100;
+const SESSION_TTL_MS = 30 * 60 * 1000; // 30 minutes
 const transports = new Map<string, StreamableHTTPServerTransport>();
+const sessionLastSeen = new Map<string, number>();
+
+function pruneStale() {
+  const now = Date.now();
+  for (const [id, ts] of sessionLastSeen) {
+    if (now - ts > SESSION_TTL_MS) {
+      transports.get(id)?.close();
+      transports.delete(id);
+      sessionLastSeen.delete(id);
+    }
+  }
+}
+
+function touchSession(id: string) {
+  sessionLastSeen.set(id, Date.now());
+}
 
 app.post("/mcp", async (req, res) => {
   const sessionId = req.headers["mcp-session-id"] as string | undefined;
 
   // Reuse existing transport for the session
   if (sessionId && transports.has(sessionId)) {
+    touchSession(sessionId);
     const transport = transports.get(sessionId)!;
     await transport.handleRequest(req, res, req.body);
+    return;
+  }
+
+  // Enforce session cap
+  pruneStale();
+  if (transports.size >= MAX_SESSIONS) {
+    res.status(503).json({ error: "Too many active sessions" });
     return;
   }
 
@@ -36,6 +62,7 @@ app.post("/mcp", async (req, res) => {
     sessionIdGenerator: () => crypto.randomUUID(),
     onsessioninitialized: (id) => {
       transports.set(id, transport);
+      touchSession(id);
     },
   });
 
@@ -72,12 +99,15 @@ app.delete("/mcp", async (req, res) => {
 });
 
 // Health check (Render pings / by default)
+const TOOL_COUNT = 30;
+const PROMPT_COUNT = 4;
+
 app.get("/", (_req, res) => {
-  res.json({ status: "ok", tools: 30, prompts: 4 });
+  res.json({ status: "ok", tools: TOOL_COUNT, prompts: PROMPT_COUNT, sessions: transports.size });
 });
 
 app.get("/health", (_req, res) => {
-  res.json({ status: "ok", tools: 30, prompts: 4 });
+  res.json({ status: "ok", tools: TOOL_COUNT, prompts: PROMPT_COUNT, sessions: transports.size });
 });
 
 app.listen(port, () => {
