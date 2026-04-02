@@ -291,7 +291,7 @@ Accessibili da "Add from intervals" in claude.ai o dal menu prompt in Claude Des
 | Prompt | Quando | Cosa fa |
 |---|---|---|
 | `morning_check` | Mattina | Dashboard visuale: Recovery Index gauge, barre metriche, sparkline HRV/FC, raccomandazione giornata |
-| `recovery_check` | Sera post-allenamento | Dashboard visuale: Recovery Index + ACWR/Monotony/Strain gauge, red flag, raccomandazioni domani |
+| `evening_check` | Sera post-allenamento | Dashboard visuale: Recovery Index + ACWR/Monotony/Strain gauge, red flag, raccomandazioni domani |
 | `weekly_review` | Domenica sera | Dashboard visuale: volume per sport, TSS giornaliero, CTL/ATL/TSB sparkline, voto settimana |
 | `activity_review` | Fine attivita | Dashboard visuale: metriche attivita, zone, pacing, decoupling gauge, dFRC chart |
 

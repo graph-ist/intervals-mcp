@@ -84,7 +84,7 @@ export function createServer(): { mcpServer: McpServer; toolCount: number; promp
     ],
   }));
 
-  server.prompt("recovery_check", "Check serale post-allenamento: recupero, carico, rischio", {}, async () => ({
+  server.prompt("evening_check", "Check serale post-allenamento: recupero, carico, rischio", {}, async () => ({
     messages: [
       {
         role: "user" as const,
