@@ -1,10 +1,6 @@
 import * as icu from "../intervals.js";
-import type { PowerModel, StreamData } from "../types.js";
-
-function extractStream(s: StreamData | undefined): number[] {
-  if (!s) return [];
-  return Array.isArray(s) ? s : (s.data ?? []);
-}
+import type { PowerModel } from "../types.js";
+import { extractStream } from "./utils.js";
 
 export async function computeDfrc(
   activity_id: string,
@@ -57,9 +53,9 @@ export async function computeDfrc(
       modelUsed = "sport_settings";
     } else {
       const pdModel =
-        pdModels.find((m: any) => m.type === preferredModel) ??
-        pdModels.find((m: any) => m.type === "FFT_CURVES") ??
-        pdModels.find((m: any) => m.type === "MORTON_3P");
+        pdModels.find((m) => m.type === preferredModel) ??
+        pdModels.find((m) => m.type === "FFT_CURVES") ??
+        pdModels.find((m) => m.type === "MORTON_3P");
 
       if (pdModel) {
         if (!ftp) ftp = pdModel.ftp ?? pdModel.criticalPower;
@@ -77,8 +73,9 @@ export async function computeDfrc(
   let powerArr: number[];
 
   if (Array.isArray(streams)) {
-    const timeStream = (streams as any[]).find((s: any) => s.type === "time");
-    const wattsStream = (streams as any[]).find((s: any) => s.type === "watts");
+    const streamArr = streams as { type: string; data?: number[] }[];
+    const timeStream = streamArr.find((s) => s.type === "time");
+    const wattsStream = streamArr.find((s) => s.type === "watts");
     timeArr = timeStream?.data ?? [];
     powerArr = wattsStream?.data ?? [];
   } else {

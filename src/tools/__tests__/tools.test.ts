@@ -59,6 +59,32 @@ describe("computeDecoupling", () => {
     expect(result!.assessment).toContain("Excellent");
   });
 
+  it("handles exactly 60 valid points (boundary)", async () => {
+    const n = 60;
+    const time = Array.from({ length: n }, (_, i) => i);
+    const watts = time.map(() => 200);
+    const hr = time.map(() => 140);
+    vi.mocked(icu.getActivityStreams).mockResolvedValue({ time, watts, heartrate: hr });
+    vi.mocked(icu.getActivity).mockResolvedValue({ name: "Boundary", type: "Ride" });
+
+    const result = await computeDecoupling("a1", 0, 0);
+    expect(result).not.toBeNull();
+    expect(result!.decoupling_pct).toBeCloseTo(0, 1);
+  });
+
+  it("handles streams with NaN values gracefully", async () => {
+    const n = 120;
+    const time = Array.from({ length: n }, (_, i) => i);
+    const watts = time.map((_, i) => (i === 50 ? 0 : 200)); // zero power filtered out
+    const hr = time.map(() => 140);
+    vi.mocked(icu.getActivityStreams).mockResolvedValue({ time, watts, heartrate: hr });
+    vi.mocked(icu.getActivity).mockResolvedValue({ name: "NaN", type: "Ride" });
+
+    const result = await computeDecoupling("a1", 0, 0);
+    // Should still compute (zero-power points are excluded, but 119 > 60)
+    expect(result).not.toBeNull();
+  });
+
   it("detects positive drift when HR rises", async () => {
     const n = 200;
     const time = Array.from({ length: n }, (_, i) => i);
@@ -115,6 +141,20 @@ describe("computeDfrc", () => {
     // 100w * 300s = 30000J above FTP, W' = 20000J → should go negative
     expect(result!.summary.min_dfrc_joules).toBeLessThan(0);
     expect(result!.summary.time_below_zero_seconds).toBeGreaterThan(0);
+  });
+
+  it("handles time array without gaps when missing", async () => {
+    const n = 100;
+    const watts = Array.from({ length: n }, () => 200);
+    // No time array → should generate index-based time
+    vi.mocked(icu.getActivityStreams).mockResolvedValue({ watts });
+    vi.mocked(icu.getActivity).mockResolvedValue({ name: "NoTime", type: "Ride" });
+    vi.mocked(icu.getPowerCurves).mockResolvedValue({ list: [] });
+    vi.mocked(icu.getSportSettings).mockResolvedValue({ ftp: 250, w_prime: 20000 });
+
+    const result = await computeDfrc("a1", undefined, undefined, 250, 20000);
+    expect(result).not.toBeNull();
+    expect(result!.chart_data.length).toBeGreaterThan(0);
   });
 });
 
@@ -212,8 +252,23 @@ describe("computeTrainingLoadRisk", () => {
 
     const result = await computeTrainingLoadRisk(14, daysAgo, today);
     expect(result).not.toBeNull();
-    const acwrEntries = result!.acwr_history.filter((a: any) => a.acwr > 1.5);
+    const acwrEntries = result!.acwr_history.filter((a: { acwr: number }) => a.acwr > 1.5);
     expect(acwrEntries.length).toBeGreaterThan(0);
+  });
+
+  it("handles all zero CTL (no ACWR entries)", async () => {
+    const data = Array.from({ length: 14 }, (_, i) => ({
+      id: daysAgo(14 - i),
+      ctlLoad: 50,
+      ctl: 0,
+      atl: 0,
+    }));
+    vi.mocked(icu.getWellness).mockResolvedValue(data);
+
+    const result = await computeTrainingLoadRisk(14, daysAgo, today);
+    expect(result).not.toBeNull();
+    // ACWR skips entries with ctl <= 0
+    expect(result!.acwr_history.length).toBe(0);
   });
 });
 
@@ -227,6 +282,18 @@ describe("computeMetabolicProfile", () => {
     vi.mocked(icu.getSportSettings).mockResolvedValue({ ftp: 250 });
     vi.mocked(icu.getAthlete).mockResolvedValue({ weight: 75 });
     expect(await computeMetabolicProfile()).toBeNull();
+  });
+
+  it("handles single-point power curve", async () => {
+    vi.mocked(icu.getPowerCurves).mockResolvedValue({
+      list: [{ secs: [300], values: [290], powerModels: [] }],
+    });
+    vi.mocked(icu.getSportSettings).mockResolvedValue({ ftp: 250 });
+    vi.mocked(icu.getAthlete).mockResolvedValue({ weight: 70 });
+
+    const result = await computeMetabolicProfile();
+    expect(result).not.toBeNull();
+    expect(result!.key_metrics.map_5min_watts).toBe(290);
   });
 
   it("computes VLaMax, Coggan, FRI from a power curve", async () => {

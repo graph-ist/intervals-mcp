@@ -13,6 +13,6 @@ if (!apiKey) {
 
 icu.configure(apiKey, athleteId);
 
-const server = createServer();
+const { mcpServer } = createServer();
 const transport = new StdioServerTransport();
-await server.connect(transport);
+await mcpServer.connect(transport);

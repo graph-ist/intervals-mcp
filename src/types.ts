@@ -82,3 +82,55 @@ export interface Athlete {
   weight?: number;
   [key: string]: unknown;
 }
+
+/** Calendar event (GET /athlete/{id}/events) */
+export interface CalendarEvent {
+  id: number;
+  start_date_local?: string;
+  category?: string;
+  type?: string;
+  name?: string;
+  description?: string;
+  load_target?: number;
+  [key: string]: unknown;
+}
+
+/** Folder (GET /athlete/{id}/folders) */
+export interface Folder {
+  id: number;
+  name?: string;
+  type?: string;
+  [key: string]: unknown;
+}
+
+/** Generic curve response (pace/HR curves) */
+export interface CurveResponse {
+  list?: CurveData[];
+  [key: string]: unknown;
+}
+
+export interface CurveData {
+  secs?: number[];
+  values?: number[];
+  [key: string]: unknown;
+}
+
+/** Power vs HR plot data */
+export interface PowerVsHRData {
+  watts?: number[];
+  heartrate?: number[];
+  [key: string]: unknown;
+}
+
+/** Athlete summary (GET /athlete/{id}/athlete-summary) */
+export interface AthleteSummary {
+  totals?: Record<string, unknown>;
+  [key: string]: unknown;
+}
+
+/** Power-HR curve (GET /athlete/{id}/power-hr-curve) */
+export interface PowerHRCurve {
+  watts?: number[];
+  heartrate?: number[];
+  [key: string]: unknown;
+}

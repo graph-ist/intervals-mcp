@@ -1,6 +1,25 @@
 import * as icu from "../intervals.js";
 import type { WellnessDay } from "../types.js";
 
+interface MetricResult {
+  value: number;
+  baseline_mean: number;
+  z_score: number;
+  status: string;
+  trend: string;
+}
+
+interface DayResult {
+  date: string;
+  metrics: Record<string, MetricResult>;
+  readiness_device: number | null;
+  recovery_index?: number;
+  status?: string;
+  red_flags?: string[];
+  blood_pressure?: { systolic: number; diastolic: number };
+  training_load: { ctl: number; atl: number; tsb: number; ramp_rate: number | undefined };
+}
+
 const METRICS: [keyof WellnessDay, boolean][] = [
   ["hrv", true],
   ["restingHR", false],
@@ -38,11 +57,11 @@ export async function computeRecoveryIndex(days: number, daysAgo: (n: number) =>
   data.sort((a, b) => a.id.localeCompare(b.id));
 
   const analysisStart = data.length > N ? data.length - N : 0;
-  const results: any[] = [];
+  const results: DayResult[] = [];
 
   for (let i = analysisStart; i < data.length; i++) {
     const day = data[i];
-    const dayResult: any = { date: day.id, metrics: {}, readiness_device: day.readiness ?? null };
+    const dayResult: DayResult = { date: day.id, metrics: {}, readiness_device: day.readiness ?? null } as DayResult;
 
     for (const [field, higherBetter] of METRICS) {
       const val = day[field] as number | undefined;
@@ -93,11 +112,11 @@ export async function computeRecoveryIndex(days: number, daysAgo: (n: number) =>
     }
 
     // Composite Recovery Index (0-100)
-    const metricEntries = Object.values(dayResult.metrics) as any[];
+    const metricEntries = Object.values(dayResult.metrics);
     if (metricEntries.length >= 3) {
       let wSum = 0,
         zSum = 0;
-      for (const [field, m] of Object.entries(dayResult.metrics) as [string, any][]) {
+      for (const [field, m] of Object.entries(dayResult.metrics)) {
         const w = WEIGHTS[field] ?? 1;
         zSum += m.z_score * w;
         wSum += w;
@@ -147,7 +166,7 @@ export async function computeRecoveryIndex(days: number, daysAgo: (n: number) =>
       results.reduce((s, r) => s + (r.recovery_index ?? 0), 0) /
         (results.filter((r) => r.recovery_index != null).length || 1),
     ),
-    red_flag_days: results.filter((r) => r.red_flags?.length > 0).length,
+    red_flag_days: results.filter((r) => (r.red_flags?.length ?? 0) > 0).length,
     history: results.slice(-7),
     reference_ranges: {
       recovery_index: [

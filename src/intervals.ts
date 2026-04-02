@@ -1,6 +1,19 @@
 const BASE = "https://intervals.icu/api/v1";
 
-import type { Activity, ActivityStreams, Athlete, PowerCurveResponse, SportSettings, WellnessDay } from "./types.js";
+import type {
+  Activity,
+  ActivityStreams,
+  Athlete,
+  AthleteSummary,
+  CalendarEvent,
+  CurveResponse,
+  Folder,
+  PowerCurveResponse,
+  PowerHRCurve,
+  PowerVsHRData,
+  SportSettings,
+  WellnessDay,
+} from "./types.js";
 
 let apiKey: string;
 let athleteId: string;
@@ -62,31 +75,31 @@ export const searchActivities = (query: string, limit = 10) =>
 export const getActivity = (id: string, intervals = true) => api<Activity>(G, act(id, `?intervals=${intervals}`));
 export const getActivityStreams = (id: string, types: string[]) =>
   api<ActivityStreams>(G, act(id, `/streams?types=${types.join(",")}`));
-export const getActivityPowerCurve = (id: string) => api<unknown>(G, act(id, "/power-curve"));
-export const getActivityPaceCurve = (id: string) => api<unknown>(G, act(id, "/pace-curve"));
-export const getActivityHRCurve = (id: string) => api<unknown>(G, act(id, "/hr-curve"));
-export const getActivityPowerVsHR = (id: string) => api<unknown>(G, act(id, "/power-vs-hr"));
+export const getActivityPowerCurve = (id: string) => api<CurveResponse>(G, act(id, "/power-curve"));
+export const getActivityPaceCurve = (id: string) => api<CurveResponse>(G, act(id, "/pace-curve"));
+export const getActivityHRCurve = (id: string) => api<CurveResponse>(G, act(id, "/hr-curve"));
+export const getActivityPowerVsHR = (id: string) => api<PowerVsHRData>(G, act(id, "/power-vs-hr"));
 export const getWellness = (oldest: string, newest: string) =>
   api<WellnessDay[]>(G, ath(`/wellness?oldest=${oldest}&newest=${newest}`));
 
 export function getEvents(oldest: string, newest: string, category?: string) {
   let url = ath(`/events?oldest=${oldest}&newest=${newest}`);
   if (category) url += `&category=${category}`;
-  return api(G, url);
+  return api<CalendarEvent[]>(G, url);
 }
 
 export const createEvent = (payload: Record<string, unknown>) => api("POST", ath("/events"), { body: payload });
 export const getPowerCurves = (sportType: string, curves: string[]) =>
   api<PowerCurveResponse>(G, ath(`/power-curves?type=${sportType}&curves=${curves.join(",")}`));
 export const getPaceCurves = (sportType: string, curves: string[]) =>
-  api<unknown>(G, ath(`/pace-curves?type=${sportType}&curves=${curves.join(",")}`));
+  api<CurveResponse>(G, ath(`/pace-curves?type=${sportType}&curves=${curves.join(",")}`));
 export const getHRCurves = (sportType: string, curves: string[]) =>
-  api<unknown>(G, ath(`/hr-curves?type=${sportType}&curves=${curves.join(",")}`));
+  api<CurveResponse>(G, ath(`/hr-curves?type=${sportType}&curves=${curves.join(",")}`));
 export const getSportSettings = () => api<SportSettings | SportSettings[]>(G, ath("/sport-settings"));
 export const getAthleteSummary = (oldest: string, newest: string) =>
-  api<unknown>(G, ath(`/athlete-summary?oldest=${oldest}&newest=${newest}`));
+  api<AthleteSummary>(G, ath(`/athlete-summary?oldest=${oldest}&newest=${newest}`));
 export const getPowerHRCurve = (oldest: string, newest: string) =>
-  api<unknown>(G, ath(`/power-hr-curve?oldest=${oldest}&newest=${newest}`));
+  api<PowerHRCurve>(G, ath(`/power-hr-curve?oldest=${oldest}&newest=${newest}`));
 
 export async function createEvents(events: Record<string, unknown>[]) {
   const results: unknown[] = [];
@@ -104,7 +117,7 @@ export const updateEvent = (id: number, payload: Record<string, unknown>) =>
 export const deleteEvent = (id: number) => api("DELETE", ath(`/events/${id}`));
 export const createCustomItem = (payload: Record<string, unknown>) =>
   api("POST", ath("/custom-items"), { body: payload });
-export const getFolders = () => api(G, ath("/folders"));
+export const getFolders = () => api<Folder[]>(G, ath("/folders"));
 export const updateSportSettings = (type: string, settings: Record<string, unknown>) =>
   api("PUT", ath(`/sport-settings/${type}?recalcHrZones=true`), { body: settings });
 export const updateWellness = (date: string, data: Record<string, unknown>) =>

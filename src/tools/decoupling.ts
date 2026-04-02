@@ -1,10 +1,5 @@
 import * as icu from "../intervals.js";
-import type { StreamData } from "../types.js";
-
-function extractStream(s: StreamData | undefined): number[] {
-  if (!s) return [];
-  return Array.isArray(s) ? s : (s.data ?? []);
-}
+import { extractStream } from "./utils.js";
 
 export async function computeDecoupling(
   activity_id: string,
@@ -63,14 +58,33 @@ export async function computeDecoupling(
   else if (decoupling >= 8) assessment = "Significant drift — insufficient aerobic fitness or pacing issue";
   else assessment = "Negative drift — unusual, check data quality or early fatigue";
 
-  // Rolling EF for chart data (30-second windows)
+  // Rolling EF for chart data (30-second windows, prefix sums + binary search)
   const efCurve: { t_min: number; ef: number; power: number; hr: number }[] = [];
   const windowSize = 30;
-  for (let i = 0; i < validPoints.length; i += Math.max(1, Math.floor(validPoints.length / 100))) {
-    const windowPts = validPoints.filter((p) => p.t >= validPoints[i].t && p.t < validPoints[i].t + windowSize);
-    if (windowPts.length >= 5) {
-      const avgP = windowPts.reduce((s, p) => s + p.p, 0) / windowPts.length;
-      const avgHR = windowPts.reduce((s, p) => s + p.hr, 0) / windowPts.length;
+  const step = Math.max(1, Math.floor(validPoints.length / 100));
+
+  // Build prefix sums
+  const prefP = new Float64Array(validPoints.length + 1);
+  const prefHR = new Float64Array(validPoints.length + 1);
+  for (let i = 0; i < validPoints.length; i++) {
+    prefP[i + 1] = prefP[i] + validPoints[i].p;
+    prefHR[i + 1] = prefHR[i] + validPoints[i].hr;
+  }
+
+  for (let i = 0; i < validPoints.length; i += step) {
+    const tEnd = validPoints[i].t + windowSize;
+    // Binary search for first index with t >= tEnd
+    let lo = i;
+    let hi = validPoints.length;
+    while (lo < hi) {
+      const mid = (lo + hi) >>> 1;
+      if (validPoints[mid].t < tEnd) lo = mid + 1;
+      else hi = mid;
+    }
+    const count = lo - i;
+    if (count >= 5) {
+      const avgP = (prefP[lo] - prefP[i]) / count;
+      const avgHR = (prefHR[lo] - prefHR[i]) / count;
       efCurve.push({
         t_min: Math.round(((validPoints[i].t - startCut) / 60) * 10) / 10,
         ef: Math.round((avgP / avgHR) * 1000) / 1000,

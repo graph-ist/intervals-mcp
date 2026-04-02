@@ -1,5 +1,8 @@
 # intervals-mcp
 
+[![CI](https://github.com/graph-ist/intervals-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/graph-ist/intervals-mcp/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+
 MCP server per [intervals.icu](https://intervals.icu) — 30 tool per accedere ai tuoi dati di allenamento da Claude.
 
 ## Setup
@@ -16,6 +19,37 @@ cp .env.example .env
 ```
 
 Inserisci la tua API key di intervals.icu (Settings → Developer).
+
+## Development
+
+```bash
+npm run build       # Compila TypeScript
+npm test            # Esegui test (vitest)
+npm run test:watch  # Test in watch mode
+npm run lint        # Lint con Biome
+npm run lint:fix    # Lint + fix automatico
+npm run check       # Build + lint + test (tutto)
+```
+
+### Struttura del progetto
+
+```
+src/
+├── server.ts           # MCP server: 30 tool, 4 prompt
+├── intervals.ts        # Client HTTP per intervals.icu API
+├── types.ts            # Tipi TypeScript per le risposte API
+├── http.ts             # Transport HTTP/Express (remote)
+├── stdio.ts            # Transport stdio (Claude Desktop)
+└── tools/
+    ├── decoupling.ts   # Decoupling aerobico Pw:Hr
+    ├── dfrc.ts         # dFRC / W'bal (Skiba)
+    ├── metabolic.ts    # Profilo metabolico (VLaMax, Coggan)
+    ├── recovery.ts     # Indice di recupero composito
+    ├── training-load.ts # Rischio carico (Monotony, ACWR)
+    ├── utils.ts        # Utility condivise (extractStream)
+    └── __tests__/
+        └── tools.test.ts
+```
 
 ## Uso da smartphone/tablet (Raspberry Pi + Cloudflare Tunnel)
 
@@ -269,3 +303,23 @@ Accessibili da "Add from intervals" in claude.ai o dal menu prompt in Claude Des
 | "Come sto oggi? Posso allenarmi forte?" | `get_recovery_index` — stato recupero fisiologico |
 | "Sto aumentando troppo? Rischio infortunio?" | `get_training_load_risk` — pattern e rischio del carico |
 | "Com'è il mio stato di forma generale?" | `get_wellness_data` — dati giornalieri raw (HRV, sonno, peso, umore) |
+
+## Variabili d'ambiente
+
+| Variabile | Obbligatoria | Default | Descrizione |
+|---|---|---|---|
+| `INTERVALS_API_KEY` | Sì | — | API key da intervals.icu (Settings → Developer) |
+| `INTERVALS_ATHLETE_ID` | No | `0` (utente corrente) | ID atleta intervals.icu |
+| `PORT` | No | `3001` | Porta HTTP (solo per `npm run serve`) |
+
+## Troubleshooting
+
+| Problema | Soluzione |
+|---|---|
+| `INTERVALS_API_KEY is required` | Crea `.env` con la tua API key (`cp .env.example .env`) |
+| `intervals.icu 401` | API key errata o scaduta — rigenerala da Settings → Developer |
+| `intervals.icu 404` | Activity ID o athlete ID non valido |
+| `intervals.icu 429` | Rate limit — riprova tra qualche secondo |
+| Tool non risponde | Controlla la connessione internet e che intervals.icu sia raggiungibile |
+| Claude Desktop non vede i tool | Riavvia Claude Desktop dopo aver modificato `claude_desktop_config.json` |
+| Pi tunnel URL cambiato | L'URL cambia dopo un reboot del Pi — recuperalo con `journalctl -u cloudflared` |

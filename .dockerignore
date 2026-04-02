@@ -1,2 +1,15 @@
-*.fit
+node_modules
+dist
+.git
+.github
 .env
+*.fit
+*.fit.gz
+*.md
+*.mjs
+src
+biome.json
+vitest.config.ts
+.DS_Store
+coverage
+.vscode

@@ -1,5 +1,8 @@
+// Read version from package.json at module load
 import { readFileSync } from "node:fs";
-import { basename } from "node:path";
+import { readFile } from "node:fs/promises";
+import { basename, dirname, join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import * as icu from "./intervals.js";
@@ -9,11 +12,36 @@ import { computeMetabolicProfile } from "./tools/metabolic.js";
 import { computeRecoveryIndex } from "./tools/recovery.js";
 import { computeTrainingLoadRisk } from "./tools/training-load.js";
 
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const pkg = JSON.parse(readFileSync(join(__dirname, "..", "package.json"), "utf-8"));
+const VERSION: string = pkg.version;
+
 // ---------- Helpers ----------
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 const dateStr = z.string().regex(DATE_RE, "Must be YYYY-MM-DD");
 const ALLOWED_UPLOAD_EXT = /\.(fit|fit\.gz|tcx|gpx)$/i;
+const MAX_EVENTS_BATCH = 90;
+
+type ToolResult = { content: { type: "text"; text: string }[]; isError?: boolean };
+
+function safeReturn(data: unknown): ToolResult {
+  return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
+}
+
+function toolError(msg: string): ToolResult {
+  return { content: [{ type: "text", text: msg }], isError: true };
+}
+
+async function safe<T>(fn: () => Promise<T>): Promise<ToolResult> {
+  try {
+    const data = await fn();
+    return safeReturn(data);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    return toolError(`API error: ${msg}`);
+  }
+}
 
 function daysAgo(n: number): string {
   const d = new Date();
@@ -33,13 +61,16 @@ function daysFromNow(n: number): string {
 
 // ---------- Server ----------
 
-export function createServer(): McpServer {
+export function createServer(): { mcpServer: McpServer; toolCount: number; promptCount: number; version: string } {
   const server = new McpServer({
     name: "intervals-icu",
-    version: "0.2.0",
+    version: VERSION,
   });
 
   // ---------- Prompts ----------
+
+  const PROMPT_SUFFIX =
+    "Interpreta ogni valore usando i reference_ranges della risposta — indica la fascia e il significato per l'atleta. No emoji.";
 
   server.prompt("morning_check", "Check mattutino: wellness, HRV, sonno, prontezza per la giornata", {}, async () => ({
     messages: [
@@ -47,7 +78,7 @@ export function createServer(): McpServer {
         role: "user" as const,
         content: {
           type: "text" as const,
-          text: `Dammi il punto della situazione per oggi.\n\nUsa get_recovery_index e get_wellness_data (ultimi 7 giorni).\n\nMostra Recovery Index, metriche fisiologiche con fascia e confronto baseline, trend 7 giorni, segnali di attenzione, e raccomandazione per la giornata.\nInterpreta ogni valore usando i reference_ranges. No emoji.`,
+          text: `Come sto oggi? Posso allenarmi forte o devo moderare?\n\nAnalizza recupero e wellness degli ultimi 7 giorni. Mostra Recovery Index, stato delle metriche fisiologiche rispetto alla baseline, trend recente, e segnali di attenzione.\n\n${PROMPT_SUFFIX}`,
         },
       },
     ],
@@ -59,7 +90,7 @@ export function createServer(): McpServer {
         role: "user" as const,
         content: {
           type: "text" as const,
-          text: `Check serale post-allenamento.\n\nUsa get_recovery_index e get_training_load_risk.\n\nMostra Recovery Index, metriche fisiologiche con fascia, ACWR/Monotony/Strain con rischio, segnali di attenzione, e raccomandazione per domani.\nInterpreta ogni valore usando i reference_ranges. No emoji.`,
+          text: `Check serale post-allenamento. Come ha risposto il corpo al carico di oggi?\n\nAnalizza stato di recupero e rischio da carico (ACWR, Monotony, Strain). Segnala red flag e dammi indicazioni per domani.\n\n${PROMPT_SUFFIX}`,
         },
       },
     ],
@@ -78,7 +109,7 @@ export function createServer(): McpServer {
           role: "user" as const,
           content: {
             type: "text" as const,
-            text: `Review settimanale dal ${oldest ?? daysAgo(7)} al ${newest ?? today()}.\n\nRecupera get_recent_activities, get_fitness_summary, get_training_load_risk, get_recovery_index, get_wellness_data (7 giorni).\n\nMostra volume per sport, TSS, CTL/ATL/TSB, ACWR e rischio carico, Recovery Index, trend della settimana, voto e suggerimenti per la prossima settimana.\nInterpreta ogni valore usando i reference_ranges. No emoji.`,
+            text: `Review settimanale dal ${oldest ?? daysAgo(7)} al ${newest ?? today()}.\n\nAnalizza volume per sport, carico (TSS, CTL/ATL/TSB), rischio (ACWR/Monotony), recupero e wellness. Dai un voto alla settimana e suggerimenti per la prossima.\n\n${PROMPT_SUFFIX}`,
           },
         },
       ],
@@ -97,7 +128,7 @@ export function createServer(): McpServer {
           role: "user" as const,
           content: {
             type: "text" as const,
-            text: `Analizza l'attivita ${activity_id}.\n\nRecupera get_activity_detail. Se bike con potenza, aggiungi get_aerobic_decoupling e get_activity_dfrc.\n\nMostra riepilogo, metriche chiave, laps/split, zone, decoupling e dFRC se disponibili, punti di forza e cosa migliorare.\nInterpreta i valori usando i reference_ranges. No emoji.`,
+            text: `Analizza l'attività ${activity_id} in dettaglio.\n\nMostra riepilogo, metriche chiave, laps/split e zone. Se ha dati di potenza, includi decoupling aerobico e dFRC. Evidenzia punti di forza e cosa migliorare.\n\n${PROMPT_SUFFIX}`,
           },
         },
       ],
@@ -107,20 +138,16 @@ export function createServer(): McpServer {
   // ---------- Tools ----------
 
   // --- get_athlete ---
-  server.tool("get_athlete", "Get athlete profile, settings, and current fitness (CTL/ATL/TSB)", {}, async () => {
-    const data = await icu.getAthlete();
-    return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
-  });
+  server.tool("get_athlete", "Get athlete profile, settings, and current fitness (CTL/ATL/TSB)", {}, () =>
+    safe(() => icu.getAthlete()),
+  );
 
   // --- get_recent_activities ---
   server.tool(
     "get_recent_activities",
     "Get recent activities. Use to find latest workouts.",
     { days: z.number().optional().describe("How many days back (default 14)") },
-    async ({ days }) => {
-      const data = await icu.getActivities(daysAgo(days ?? 14), today());
-      return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
-    },
+    ({ days }) => safe(() => icu.getActivities(daysAgo(days ?? 14), today())),
   );
 
   // --- search_activities ---
@@ -131,10 +158,7 @@ export function createServer(): McpServer {
       query: z.string().describe("Search query"),
       limit: z.number().optional().describe("Max results (default 10)"),
     },
-    async ({ query, limit }) => {
-      const data = await icu.searchActivities(query, limit ?? 10);
-      return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
-    },
+    ({ query, limit }) => safe(() => icu.searchActivities(query, limit ?? 10)),
   );
 
   // --- get_activity_detail ---
@@ -142,10 +166,7 @@ export function createServer(): McpServer {
     "get_activity_detail",
     "Get full activity details including laps, intervals, and zones",
     { activity_id: z.string().describe("Activity ID") },
-    async ({ activity_id }) => {
-      const data = await icu.getActivity(activity_id);
-      return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
-    },
+    ({ activity_id }) => safe(() => icu.getActivity(activity_id)),
   );
 
   // --- get_activity_streams ---
@@ -158,10 +179,7 @@ export function createServer(): McpServer {
         .array(z.string())
         .describe("Stream types: watts, heartrate, velocity_smooth, cadence, altitude, latlng, distance, time"),
     },
-    async ({ activity_id, types }) => {
-      const data = await icu.getActivityStreams(activity_id, types);
-      return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
-    },
+    ({ activity_id, types }) => safe(() => icu.getActivityStreams(activity_id, types)),
   );
 
   // --- get_activity_power_curve ---
@@ -169,10 +187,7 @@ export function createServer(): McpServer {
     "get_activity_power_curve",
     "Get power curve (best efforts at each duration) for an activity",
     { activity_id: z.string().describe("Activity ID") },
-    async ({ activity_id }) => {
-      const data = await icu.getActivityPowerCurve(activity_id);
-      return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
-    },
+    ({ activity_id }) => safe(() => icu.getActivityPowerCurve(activity_id)),
   );
 
   // --- get_activity_pace_curve ---
@@ -180,10 +195,7 @@ export function createServer(): McpServer {
     "get_activity_pace_curve",
     "Get pace curve (best paces at each duration) for an activity",
     { activity_id: z.string().describe("Activity ID") },
-    async ({ activity_id }) => {
-      const data = await icu.getActivityPaceCurve(activity_id);
-      return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
-    },
+    ({ activity_id }) => safe(() => icu.getActivityPaceCurve(activity_id)),
   );
 
   // --- get_activity_hr_curve ---
@@ -191,10 +203,7 @@ export function createServer(): McpServer {
     "get_activity_hr_curve",
     "Get heart rate curve (best HR at each duration) for an activity",
     { activity_id: z.string().describe("Activity ID") },
-    async ({ activity_id }) => {
-      const data = await icu.getActivityHRCurve(activity_id);
-      return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
-    },
+    ({ activity_id }) => safe(() => icu.getActivityHRCurve(activity_id)),
   );
 
   // --- get_activity_power_vs_hr ---
@@ -202,10 +211,7 @@ export function createServer(): McpServer {
     "get_activity_power_vs_hr",
     "Get power vs heart rate plot for an activity (aerobic efficiency/decoupling)",
     { activity_id: z.string().describe("Activity ID") },
-    async ({ activity_id }) => {
-      const data = await icu.getActivityPowerVsHR(activity_id);
-      return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
-    },
+    ({ activity_id }) => safe(() => icu.getActivityPowerVsHR(activity_id)),
   );
 
   // --- get_training_load_risk ---
@@ -216,9 +222,14 @@ export function createServer(): McpServer {
       days: z.number().optional().describe("Days of history (default 42, min 14)"),
     },
     async ({ days }) => {
-      const result = await computeTrainingLoadRisk(days ?? 42, daysAgo, today);
-      if (!result) return { content: [{ type: "text", text: "Insufficient data (need ≥ 7 days)." }], isError: true };
-      return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
+      try {
+        const result = await computeTrainingLoadRisk(days ?? 42, daysAgo, today);
+        if (!result) return toolError("Insufficient data (need ≥ 7 days).");
+        return safeReturn(result);
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        return toolError(`API error: ${msg}`);
+      }
     },
   );
 
@@ -232,13 +243,14 @@ export function createServer(): McpServer {
       exclude_end_minutes: z.number().optional().describe("Minutes to exclude from end for cool-down (default 5)"),
     },
     async ({ activity_id, exclude_start_minutes, exclude_end_minutes }) => {
-      const result = await computeDecoupling(activity_id, exclude_start_minutes ?? 10, exclude_end_minutes ?? 5);
-      if (result === null)
-        return {
-          content: [{ type: "text", text: "Missing streams or insufficient valid data for decoupling analysis." }],
-          isError: true,
-        };
-      return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
+      try {
+        const result = await computeDecoupling(activity_id, exclude_start_minutes ?? 10, exclude_end_minutes ?? 5);
+        if (result === null) return toolError("Missing streams or insufficient valid data for decoupling analysis.");
+        return safeReturn(result);
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        return toolError(`API error: ${msg}`);
+      }
     },
   );
 
@@ -247,10 +259,7 @@ export function createServer(): McpServer {
     "get_wellness_data",
     "Get wellness data: CTL, ATL, TSB, weight, restingHR, HRV, sleep, mood, fatigue, etc.",
     { days: z.number().optional().describe("How many days back (default 30)") },
-    async ({ days }) => {
-      const data = await icu.getWellness(daysAgo(days ?? 30), today());
-      return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
-    },
+    ({ days }) => safe(() => icu.getWellness(daysAgo(days ?? 30), today())),
   );
 
   // --- get_fitness_summary ---
@@ -261,10 +270,7 @@ export function createServer(): McpServer {
       oldest: dateStr.optional().describe("Start date YYYY-MM-DD (default 42 days ago)"),
       newest: dateStr.optional().describe("End date YYYY-MM-DD (default today)"),
     },
-    async ({ oldest, newest }) => {
-      const data = await icu.getAthleteSummary(oldest ?? daysAgo(42), newest ?? today());
-      return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
-    },
+    ({ oldest, newest }) => safe(() => icu.getAthleteSummary(oldest ?? daysAgo(42), newest ?? today())),
   );
 
   // --- get_power_curves ---
@@ -278,10 +284,7 @@ export function createServer(): McpServer {
         .optional()
         .describe("Curve specs: 1y (past year), 42d (past 42 days), s0 (current season), s1 (previous season), all"),
     },
-    async ({ sport, curves }) => {
-      const data = await icu.getPowerCurves(sport ?? "Ride", curves ?? ["1y"]);
-      return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
-    },
+    ({ sport, curves }) => safe(() => icu.getPowerCurves(sport ?? "Ride", curves ?? ["1y"])),
   );
 
   // --- get_pace_curves ---
@@ -292,10 +295,7 @@ export function createServer(): McpServer {
       sport: z.string().optional().describe("Sport type: Run (default), Swim, etc."),
       curves: z.array(z.string()).optional().describe("Curve specs: 1y, 42d, s0, s1, all"),
     },
-    async ({ sport, curves }) => {
-      const data = await icu.getPaceCurves(sport ?? "Run", curves ?? ["1y"]);
-      return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
-    },
+    ({ sport, curves }) => safe(() => icu.getPaceCurves(sport ?? "Run", curves ?? ["1y"])),
   );
 
   // --- get_hr_curves ---
@@ -306,17 +306,13 @@ export function createServer(): McpServer {
       sport: z.string().optional().describe("Sport type: Ride (default), Run, Swim, etc."),
       curves: z.array(z.string()).optional().describe("Curve specs: 1y, 42d, s0, s1, all"),
     },
-    async ({ sport, curves }) => {
-      const data = await icu.getHRCurves(sport ?? "Ride", curves ?? ["1y"]);
-      return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
-    },
+    ({ sport, curves }) => safe(() => icu.getHRCurves(sport ?? "Ride", curves ?? ["1y"])),
   );
 
   // --- get_sport_settings ---
-  server.tool("get_sport_settings", "Get sport settings (zones, FTP, threshold pace, max HR, etc.)", {}, async () => {
-    const data = await icu.getSportSettings();
-    return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
-  });
+  server.tool("get_sport_settings", "Get sport settings (zones, FTP, threshold pace, max HR, etc.)", {}, () =>
+    safe(() => icu.getSportSettings()),
+  );
 
   // --- get_events ---
   server.tool(
@@ -327,10 +323,7 @@ export function createServer(): McpServer {
       newest: dateStr.optional().describe("End date YYYY-MM-DD (default 14 days from now)"),
       category: z.enum(["WORKOUT", "RACE", "NOTE"]).optional().describe("Filter by event category (default: all)"),
     },
-    async ({ oldest, newest, category }) => {
-      const data = await icu.getEvents(oldest ?? today(), newest ?? daysFromNow(14), category);
-      return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
-    },
+    ({ oldest, newest, category }) => safe(() => icu.getEvents(oldest ?? today(), newest ?? daysFromNow(14), category)),
   );
 
   // --- get_power_hr_curve ---
@@ -341,10 +334,7 @@ export function createServer(): McpServer {
       oldest: dateStr.optional().describe("Start date (default 90 days ago)"),
       newest: dateStr.optional().describe("End date (default today)"),
     },
-    async ({ oldest, newest }) => {
-      const data = await icu.getPowerHRCurve(oldest ?? daysAgo(90), newest ?? today());
-      return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
-    },
+    ({ oldest, newest }) => safe(() => icu.getPowerHRCurve(oldest ?? daysAgo(90), newest ?? today())),
   );
 
   // --- create_custom_chart ---
@@ -356,10 +346,7 @@ export function createServer(): McpServer {
       type: z.string().describe("Chart type"),
       config: z.record(z.string(), z.unknown()).describe("Chart configuration"),
     },
-    async ({ name, type, config }) => {
-      const data = await icu.createCustomItem({ name, type, ...config });
-      return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
-    },
+    ({ name, type, config }) => safe(() => icu.createCustomItem({ name, type, ...config })),
   );
 
   // --- create_training_plan ---
@@ -409,8 +396,14 @@ Do NOT use prose descriptions like "90 min Z2 puro. Potenza 155-178W" — always
         .describe("Array of events to create"),
     },
     async ({ events }) => {
-      const data = await icu.createEvents(events);
-      return { content: [{ type: "text", text: `Created ${data.length} events:\n${JSON.stringify(data, null, 2)}` }] };
+      if (events.length > MAX_EVENTS_BATCH) return toolError(`Too many events (max ${MAX_EVENTS_BATCH}).`);
+      try {
+        const data = await icu.createEvents(events);
+        return safeReturn({ created: data.length, events: data });
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        return toolError(`API error: ${msg}`);
+      }
     },
   );
 
@@ -426,10 +419,7 @@ Do NOT use prose descriptions like "90 min Z2 puro. Potenza 155-178W" — always
           "Fields to update (name, description, load_target, type, etc.). Use Workout Builder syntax for description.",
         ),
     },
-    async ({ event_id, updates }) => {
-      const data = await icu.updateEvent(event_id, updates);
-      return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
-    },
+    ({ event_id, updates }) => safe(() => icu.updateEvent(event_id, updates)),
   );
 
   // --- delete_event ---
@@ -439,10 +429,7 @@ Do NOT use prose descriptions like "90 min Z2 puro. Potenza 155-178W" — always
     {
       event_id: z.number().describe("Event ID to delete"),
     },
-    async ({ event_id }) => {
-      const data = await icu.deleteEvent(event_id);
-      return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
-    },
+    ({ event_id }) => safe(() => icu.deleteEvent(event_id)),
   );
 
   // --- update_sport_settings ---
@@ -457,10 +444,7 @@ Do NOT use prose descriptions like "90 min Z2 puro. Potenza 155-178W" — always
           "Settings to update (ftp, lthr, max_hr, w_prime, p_max, threshold_pace, power_zones, hr_zones, etc.)",
         ),
     },
-    async ({ type, settings }) => {
-      const data = await icu.updateSportSettings(type, settings);
-      return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
-    },
+    ({ type, settings }) => safe(() => icu.updateSportSettings(type, settings)),
   );
 
   // --- upload_activity ---
@@ -477,18 +461,33 @@ Do NOT use prose descriptions like "90 min Z2 puro. Potenza 155-178W" — always
           isError: true,
         };
       }
-      const fileData = readFileSync(file_path);
-      const filename = basename(file_path);
-      const data = await icu.uploadActivity(fileData, filename);
-      return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
+      const resolved = resolve(file_path);
+      if (resolved !== file_path) {
+        return {
+          content: [{ type: "text", text: "Only absolute paths are allowed (no relative segments)." }],
+          isError: true,
+        };
+      }
+      let fileData: Buffer;
+      try {
+        fileData = Buffer.from(await readFile(resolved));
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        return { content: [{ type: "text", text: `Cannot read file: ${msg}` }], isError: true };
+      }
+      const filename = basename(resolved);
+      try {
+        const data = await icu.uploadActivity(fileData, filename);
+        return safeReturn(data);
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        return toolError(`Upload failed: ${msg}`);
+      }
     },
   );
 
   // --- get_folders ---
-  server.tool("get_folders", "Get workout library folders and plans", {}, async () => {
-    const data = await icu.getFolders();
-    return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
-  });
+  server.tool("get_folders", "Get workout library folders and plans", {}, () => safe(() => icu.getFolders()));
 
   // --- update_wellness ---
   server.tool(
@@ -502,10 +501,7 @@ Do NOT use prose descriptions like "90 min Z2 puro. Potenza 155-178W" — always
           "Wellness fields to update (weight, restingHR, hrv, sleepSecs, sleepQuality, soreness, fatigue, stress, mood, motivation, injury, spO2, comments, etc.)",
         ),
     },
-    async ({ date, data }) => {
-      const result = await icu.updateWellness(date, data);
-      return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
-    },
+    ({ date, data }) => safe(() => icu.updateWellness(date, data)),
   );
 
   // --- get_recovery_index ---
@@ -516,13 +512,14 @@ Do NOT use prose descriptions like "90 min Z2 puro. Potenza 155-178W" — always
       days: z.number().optional().describe("Days of history for analysis (default 30, min 14)"),
     },
     async ({ days }) => {
-      const result = await computeRecoveryIndex(days ?? 30, daysAgo, today);
-      if (!result)
-        return {
-          content: [{ type: "text", text: "Insufficient wellness data (need ≥ 7 days with device sync)." }],
-          isError: true,
-        };
-      return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
+      try {
+        const result = await computeRecoveryIndex(days ?? 30, daysAgo, today);
+        if (!result) return toolError("Insufficient wellness data (need ≥ 7 days with device sync).");
+        return safeReturn(result);
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        return toolError(`API error: ${msg}`);
+      }
     },
   );
 
@@ -543,10 +540,14 @@ Do NOT use prose descriptions like "90 min Z2 puro. Potenza 155-178W" — always
       frc_override: z.number().optional().describe("Override FRC/W' (joules). Takes priority over model."),
     },
     async ({ activity_id, model, curve, ftp_override, frc_override }) => {
-      const result = await computeDfrc(activity_id, model, curve, ftp_override, frc_override);
-      if (!result)
-        return { content: [{ type: "text", text: "No power data available for this activity." }], isError: true };
-      return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
+      try {
+        const result = await computeDfrc(activity_id, model, curve, ftp_override, frc_override);
+        if (!result) return toolError("No power data available for this activity.");
+        return safeReturn(result);
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        return toolError(`API error: ${msg}`);
+      }
     },
   );
 
@@ -564,20 +565,19 @@ Do NOT use prose descriptions like "90 min Z2 puro. Potenza 155-178W" — always
         ),
     },
     async ({ sport, curve_type }) => {
-      const result = await computeMetabolicProfile(sport, curve_type);
-      if (!result)
-        return {
-          content: [
-            {
-              type: "text",
-              text: "No power-duration curve data available. Ensure you have recent activities with power data.",
-            },
-          ],
-          isError: true,
-        };
-      return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
+      try {
+        const result = await computeMetabolicProfile(sport, curve_type);
+        if (!result)
+          return toolError(
+            "No power-duration curve data available. Ensure you have recent activities with power data.",
+          );
+        return safeReturn(result);
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        return toolError(`API error: ${msg}`);
+      }
     },
   );
 
-  return server;
+  return { mcpServer: server, toolCount: 30, promptCount: 4, version: VERSION };
 }

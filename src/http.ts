@@ -24,11 +24,12 @@ const SESSION_TTL_MS = 30 * 60 * 1000; // 30 minutes
 const transports = new Map<string, StreamableHTTPServerTransport>();
 const sessionLastSeen = new Map<string, number>();
 
-function pruneStale() {
+async function pruneStale() {
   const now = Date.now();
   for (const [id, ts] of sessionLastSeen) {
     if (now - ts > SESSION_TTL_MS) {
-      transports.get(id)?.close();
+      const transport = transports.get(id);
+      if (transport) await transport.close();
       transports.delete(id);
       sessionLastSeen.delete(id);
     }
@@ -51,7 +52,7 @@ app.post("/mcp", async (req, res) => {
   }
 
   // Enforce session cap
-  pruneStale();
+  await pruneStale();
   if (transports.size >= MAX_SESSIONS) {
     res.status(503).json({ error: "Too many active sessions" });
     return;
@@ -68,11 +69,14 @@ app.post("/mcp", async (req, res) => {
 
   transport.onclose = () => {
     const id = [...transports.entries()].find(([, t]) => t === transport)?.[0];
-    if (id) transports.delete(id);
+    if (id) {
+      transports.delete(id);
+      sessionLastSeen.delete(id);
+    }
   };
 
-  const server = createServer();
-  await server.connect(transport);
+  const { mcpServer } = createServer();
+  await mcpServer.connect(transport);
   await transport.handleRequest(req, res, req.body);
 });
 
@@ -94,22 +98,43 @@ app.delete("/mcp", async (req, res) => {
     const transport = transports.get(sessionId)!;
     await transport.close();
     transports.delete(sessionId);
+    sessionLastSeen.delete(sessionId);
   }
   res.status(200).json({ ok: true });
 });
 
 // Health check (Render pings / by default)
-const TOOL_COUNT = 30;
-const PROMPT_COUNT = 4;
+const { toolCount, promptCount, version } = createServer();
 
 app.get("/", (_req, res) => {
-  res.json({ status: "ok", tools: TOOL_COUNT, prompts: PROMPT_COUNT, sessions: transports.size });
+  res.json({ status: "ok", version, tools: toolCount, prompts: promptCount, sessions: transports.size });
 });
 
 app.get("/health", (_req, res) => {
-  res.json({ status: "ok", tools: TOOL_COUNT, prompts: PROMPT_COUNT, sessions: transports.size });
+  res.json({ status: "ok", version, tools: toolCount, prompts: promptCount, sessions: transports.size });
 });
 
-app.listen(port, () => {
+const httpServer = app.listen(port, () => {
   console.log(`intervals-mcp HTTP server running on http://localhost:${port}/mcp`);
 });
+
+// Periodic session cleanup every 5 minutes
+const pruneTimer = setInterval(() => void pruneStale(), 5 * 60 * 1000);
+pruneTimer.unref();
+
+// Graceful shutdown
+async function shutdown() {
+  console.log("Shutting down...");
+  clearInterval(pruneTimer);
+  for (const [id, transport] of transports) {
+    try {
+      await transport.close();
+    } catch {}
+    transports.delete(id);
+    sessionLastSeen.delete(id);
+  }
+  httpServer.close();
+}
+
+process.on("SIGTERM", () => void shutdown());
+process.on("SIGINT", () => void shutdown());

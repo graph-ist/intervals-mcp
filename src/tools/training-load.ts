@@ -1,5 +1,22 @@
 import * as icu from "../intervals.js";
 
+interface WeeklyStats {
+  week_ending: string;
+  weekly_load: number;
+  daily_mean: number;
+  monotony: number;
+  monotony_risk: string;
+  strain: number;
+}
+
+interface AcwrEntry {
+  date: string;
+  atl: number;
+  ctl: number;
+  acwr: number;
+  risk_zone: string;
+}
+
 export async function computeTrainingLoadRisk(days: number, daysAgo: (n: number) => string, today: () => string) {
   const N = Math.max(14, days);
   const data = await icu.getWellness(daysAgo(N), today());
@@ -11,7 +28,7 @@ export async function computeTrainingLoadRisk(days: number, daysAgo: (n: number)
   const dailyLoads = data.map((d) => ({ date: d.id, load: d.ctlLoad ?? 0, ctl: d.ctl ?? 0, atl: d.atl ?? 0 }));
 
   // Rolling 7-day Monotony & Strain (Foster 1998)
-  const weekly: any[] = [];
+  const weekly: WeeklyStats[] = [];
   for (let i = 6; i < dailyLoads.length; i++) {
     const week = dailyLoads.slice(i - 6, i + 1);
     const loads = week.map((d) => d.load);
@@ -37,7 +54,7 @@ export async function computeTrainingLoadRisk(days: number, daysAgo: (n: number)
   }
 
   // ACWR: ATL / CTL (EWMA-based from intervals.icu)
-  const acwrHistory: any[] = [];
+  const acwrHistory: AcwrEntry[] = [];
   for (const d of dailyLoads) {
     if (d.ctl <= 0) continue;
     const acwr = Math.round((d.atl / d.ctl) * 100) / 100;
