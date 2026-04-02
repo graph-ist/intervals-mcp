@@ -1,6 +1,6 @@
 # Modelli Matematici — Riferimenti e Scelte Implementative
 
-Documentazione sintetica dei modelli fisiologici implementati nei tool custom `get_activity_dfrc`, `get_metabolic_profile` e `get_recovery_index`, con riferimenti alla letteratura scientifica e contestualizzazione critica.
+Documentazione sintetica dei modelli fisiologici implementati nei tool custom `get_activity_dfrc`, `get_metabolic_profile`, `get_recovery_index`, `get_training_load_risk`, `get_aerobic_decoupling`, `get_fatigue_resistance`, `get_dfa_alpha1`, `get_polarization_analysis` e `get_longitudinal_trends`, con riferimenti alla letteratura scientifica e contestualizzazione critica.
 
 ---
 
@@ -237,6 +237,8 @@ Indice composito di recovery basato su **z-score individuali** delle metriche fi
 
 #### Input (da wellness API intervals.icu)
 
+**Metriche oggettive** (da device/wearable):
+
 | Metrica | Campo API | Direzione | Peso | Razionale |
 |---|---|---|---|---|
 | HRV (rMSSD) | `hrv` | ↑ = meglio | 3 | Gold standard per tono vagale (Plews et al., 2013) |
@@ -247,6 +249,19 @@ Indice composito di recovery basato su **z-score individuali** delle metriche fi
 | Baevsky Stress Index | `baevskySI` | ↓ = meglio | 2 | Attivazione simpatica (Baevsky & Berseneva, 2008) |
 | SpO₂ | `spO2` | ↑ = meglio | 1 | Flag overtraining/altitudine |
 | Respiratory Rate | `respiration` | ↓ = meglio | 1 | Elevata con stress/fatica (Nicolò et al., 2020) |
+
+**Metriche soggettive** (compilate dall'atleta su intervals.icu, scala 1-5):
+
+| Metrica | Campo API | Direzione | Peso | Razionale |
+|---|---|---|---|---|
+| Mood | `mood` | ↑ = meglio | 1 | Stato emotivo generale |
+| Motivation | `motivation` | ↑ = meglio | 1 | Desiderio di allenarsi |
+| Fatigue | `fatigue` | ↓ = meglio | 1 | Percezione fatica residua |
+| Soreness | `soreness` | ↓ = meglio | 1 | Dolori muscolari/articolari |
+| Stress | `stress` | ↓ = meglio | 1 | Stress percepito (lavoro, vita) |
+| Injury | `injury` | ↓ = meglio | 1 | Fastidi/infortuni in corso |
+
+**Degradazione graceful**: se i campi soggettivi non sono compilati, vengono semplicemente ignorati. L'indice funziona ugualmente con i soli dati oggettivi del device. Quando i dati soggettivi sono presenti, aggiungono 6 punti di peso collettivo (peso individuale 1 × 6 metriche) al calcolo, per un contributo complessivo significativo ma non dominante rispetto ai dati fisiologici (Saw et al., 2016).
 
 #### Z-score individuale
 
@@ -356,7 +371,7 @@ $$
 1. **Pesi soggettivi**: i pesi (HRV=3, sleep=2, SpO₂=1) sono basati su rilevanza clinica relativa nella letteratura, non calibrati su outcome. Un approccio data-driven (es. regressione su performance successiva) sarebbe più robusto ma richiede un dataset longitudinale.
 2. **Manca la temperatura cutanea**: marker precoce di infezione e overreaching, non disponibile nell'API.
 3. **Sigmoide arbitraria**: i parametri (1.2, +0.5) sono scelti per dare un range intuitivo 20–95. Non c'è validazione esterna.
-4. **Nessun campo soggettivo integrato**: i campi `mood`, `fatigue`, `soreness` sono disponibili nell'API ma raramente compilati dall'utente. Se presenti, andrebbero inclusi (Saw et al., 2016).
+4. **Campi soggettivi opzionali**: i campi `mood`, `motivation`, `fatigue`, `soreness`, `stress`, `injury` sono ora integrati (peso 1 ciascuno) con degradazione graceful. Se l'atleta non li compila, il RI funziona ugualmente con i soli dati oggettivi. Quando presenti, migliorano la predittività (Saw et al., 2016).
 
 > **Dong (2016)**. *The role of heart rate variability in sports physiology.* Exp Ther Med, 11(5), 1531–1536.
 
@@ -531,3 +546,303 @@ I parametri CP/W'/Pmax provengono dai modelli PD di intervals.icu, non calcolati
 | ECP | Extended CP multi-componente | Proprietario intervals.icu |
 
 > La scelta del modello PD è determinante: MORTON_3P include Pmax esplicito (utile per VLaMax), mentre MS_2P e FFT_CURVES potrebbero non esporlo. Il tool toggle permette di confrontare l'effetto di ciascun modello sulla stima finale.
+
+---
+
+## 8. `get_fatigue_resistance` — Durability / FRS
+
+### Modello
+
+Confronto tra la power curve in condizioni **fresche** e la power curve in condizioni **affaticate** (dopo un certo quantitativo di kJ di lavoro), per quantificare la **durability** — la capacità di mantenere la performance sotto fatica prolungata.
+
+$$
+FRS = \frac{1}{n} \sum_{i=1}^{n} \frac{P_{fatigued}(t_i)}{P_{fresh}(t_i)} \times 100
+$$
+
+Dove $t_i$ sono 7 durate chiave: 5s, 15s, 1min, 5min, 10min, 20min, 60min.
+
+Per ogni durata:
+
+$$
+\Delta\%(t) = \frac{P_{fatigued}(t) - P_{fresh}(t)}{P_{fresh}(t)} \times 100
+$$
+
+#### Durate chiave e sistemi energetici
+
+| Durata | Sistema energetico | Significato |
+|---|---|---|
+| 5s | Neuromuscolare (PCr) | Sprint capability sotto fatica |
+| 15s | Anaerobico alacido | Capacità esplosiva residua |
+| 1min | Capacità anaerobica | Glicolisi sotto fatica |
+| 5min | VO₂max | Potenza aerobica massima residua |
+| 10min | Soglia | Sostenibilità alta intensità |
+| 20min | FTP | Potenza funzionale sotto fatica |
+| 60min | Endurance | Durability vera e propria |
+
+#### Classificazione FRS
+
+| FRS (%) | Classificazione | Significato |
+|---|---|---|
+| ≥ 95 | Eccellente | Perdita minima sotto fatica — endurance forte |
+| 90–95 | Buono | Fade accettabile, muscolatura ben adattata |
+| 85–90 | Moderato | Margine di miglioramento nella resistenza alla fatica |
+| < 85 | Basso | Perdita significativa — lavorare sulla base aerobica |
+
+### Implementazione
+
+- **Curve fresche**: `GET /athlete/{id}/power-curves?type={sport}&curves={period}`
+- **Curve affaticate**: `GET /athlete/{id}/power-curves?type={sport}&curves={period}&fatigue=kj0`
+- **Interpolazione**: per durate non esattamente presenti nella curva, interpolazione lineare tra i due punti più vicini
+- **VO₂max retention**: calcolato specificamente a 5min come proxy della potenza aerobica massima residua
+
+### Origine e letteratura
+
+| Riferimento | Contributo |
+|---|---|
+| **Maunder et al. (2021)**. *The case for "durability" in endurance exercise performance.* J Appl Physiol, 131(3), 1226–1233. | **Framework adottato.** Definisce durability come "time of onset and magnitude of deterioration of physiological profiling markers over time". Propone lo studio sistematico del calo di performance sotto fatica progressiva. |
+| **Van Erp et al. (2021)**. *Pacing and power output during professional cycling.* Int J Sports Physiol Perform, 16(3), 349–355. | Dati di gara: i ciclisti professionisti mostrano un calo del 5-15% nella potenza massimale nelle ultime ore di tappa. |
+| **Clark et al. (2019)**. *The effect of prior exercise on O₂ uptake kinetics during high-intensity cycling.* Med Sci Sports Exerc, 51(2), 343–351. | La cinetica VO₂ rallenta dopo esercizio prolungato, contribuendo al calo della potenza aerobica massima. |
+
+### Contesto critico
+
+1. **Definizione di "fatigato"**: intervals.icu usa soglie predefinite di kJ (kj0, kj1, kj2) che non sono personalizzate sull'individuo. Un ciclista da 90kg e uno da 60kg raggiungono la stessa soglia kJ con sforzi relativi molto diversi.
+
+2. **Non è un test diretto**: le curve MMP sono costruite da dati storici di allenamento/gara, non da un protocollo controllato. La composizione delle attività (intensità, durata, meteo) influenza il risultato.
+
+3. **Delta negativo ≠ sempre "fatica"**: un delta vicino a 0% o positivo per durate molto brevi (5s) è normale — gli sprint non degradano significativamente dopo lavoro aerobico moderato.
+
+---
+
+## 9. `get_dfa_alpha1` — DFA α1 Threshold Detection
+
+### Modello
+
+**DFA α1** (Detrended Fluctuation Analysis, esponente alpha1) misura le proprietà di correlazione frattale degli intervalli RR battito-battito durante l'esercizio.
+
+L'analisi DFA calcola la fluttuazione media $F(n)$ del segnale RR detrended a diverse scale temporali $n$, poi stima l'esponente $\alpha_1$ dalla relazione:
+
+$$
+F(n) \propto n^{\alpha_1}
+$$
+
+Dove $\alpha_1$ è stimato come pendenza del fit lineare di $\log F(n)$ vs $\log n$ per scale brevi (4-16 battiti).
+
+#### Significato fisiologico
+
+| α1 | Stato | Significato fisiologico |
+|---|---|---|
+| > 1.0 | Riposo / intensità molto bassa | Dinamica cardiaca correlata, dominanza vagale |
+| 0.75 | **Soglia aerobica (VT1/AeT)** | Transizione da dinamica correlata a random |
+| 0.50–0.75 | Intensità moderata-alta | Tra soglia aerobica e anaerobica |
+| 0.50 | **Soglia anaerobica (VT2/AnT)** | Transizione verso dinamica anti-correlata |
+| < 0.50 | Intensità severa | Sopra la soglia anaerobica |
+
+#### Rilevamento soglie
+
+Il tool scansiona il segnale DFA α1 smoothato (finestra rolling di 120s) alla ricerca dei **crossing point** (attraversamenti):
+
+- **AeT**: primo punto dove α1 scende sotto 0.75 con intensità crescente
+- **AnT**: primo punto dove α1 scende sotto 0.50
+
+Interpolazione lineare tra i punti adiacenti per stimare potenza e HR alla soglia esatta.
+
+#### Confidence
+
+| Punti vicini al crossing (|α1 - target| < 0.15) | Confidence |
+|---|---|
+| ≥ 10 | High |
+| 5–9 | Medium |
+| < 5 | Low |
+
+### Requisiti dispositivo
+
+DFA α1 richiede un dispositivo che registri gli **intervalli RR battito-battito** durante l'esercizio:
+
+| Dispositivo | Compatibile | Note |
+|---|---|---|
+| Garmin Fenix 7+, FR 265+, Edge 1040+ | ✅ | FirstBeat analytics, stream `dfa_a1` |
+| Polar H10 + HRV Logger app | ✅ | Gold standard per accuratezza RR |
+| Garmin HRM-Pro Plus + Garmin watch | ✅ | Fascia toracica necessaria |
+| Movesense sensor + app | ✅ | Sensore medico-grade |
+| **Apple Watch (qualsiasi modello)** | ❌ | Misura rMSSD solo a riposo, no beat-to-beat durante esercizio |
+| Sensori ottici da polso (generici) | ❌ | Insufficiente accuratezza RR |
+
+### Origine e letteratura
+
+| Riferimento | Contributo |
+|---|---|
+| **Rogers et al. (2021)**. *An evaluation of the relationship between heart rate variability and aerobic and anaerobic thresholds.* J Sports Sci Med, 20(2), 303–311. | **Modello adottato.** Valida α1 = 0.75 come proxy della soglia ventilatoria VT1 e α1 = 0.50 come proxy di VT2, confrontando con test lattacidi e spirometrici. |
+| **Gronwald et al. (2019)**. *Correlation properties of heart rate variability during endurance exercise.* Front Physiol, 10, 1202. | Framework teorico: DFA α1 come misura continua dello stress autonomico durante esercizio. |
+| **Gronwald et al. (2020)**. *Dual or single? Physiological mapping based on DFA α1.* Int J Sports Med, 41(14), 1027–1035. | Propone la "DFA α1 physiological mapping" come alternativa ai test tradizionali per identificare i domini di intensità. |
+| **Peng et al. (1995)**. *Quantification of scaling exponents and crossover phenomena in nonstationary heartbeat time series.* Chaos, 5(1), 82–87. | Metodologia DFA originale applicata alle serie RR. |
+
+### Contesto critico
+
+1. **Protocollo ideale**: DFA α1 è più affidabile durante un **ramp test** con incrementi graduali di potenza. Attività in steady-state o con intervalli possono non mostrare crossing puliti.
+
+2. **Artefatti**: movimenti, perdita di contatto della fascia, e aritmie cardiache possono generare valori α1 spuri. Il tool filtra valori 0 < α1 < 2.0 e richiede almeno 30 punti validi.
+
+3. **Variabilità day-to-day**: le soglie DFA variano con lo stato di recupero, la caffeina, la temperatura, e altri fattori. Un singolo test non è definitivo — meglio ripetere 2-3 volte.
+
+4. **Non validato per running**: la maggior parte degli studi DFA α1 è su ciclismo. Nel running, gli artefatti di movimento sono più significativi.
+
+---
+
+## 10. `get_polarization_analysis` — Training Intensity Distribution
+
+### Modello
+
+Aggrega il tempo nelle zone di intensità su tutte le attività di un periodo e sport, calcolando la distribuzione tra bassa, media e alta intensità.
+
+#### Gruppi di intensità
+
+$$
+\text{Low} = Z1 + Z2 \quad (\text{base aerobica})
+$$
+
+$$
+\text{Mid} = Z3 \quad (\text{tempo / "black hole"})
+$$
+
+$$
+\text{High} = Z4 + Z5 + Z6 + Z7 \quad (\text{soglia e sopra})
+$$
+
+#### Polarization Index
+
+Misura composita della polarizzazione dell'allenamento:
+
+$$
+PI = \frac{\text{Low}}{\text{Mid}} \times \frac{\log_2(1 + \%_{High})}{5}
+$$
+
+Dove $\%_{High}$ è la percentuale di tempo ad alta intensità. PI > 2.0 indica un allenamento ben polarizzato.
+
+#### Modelli di distribuzione
+
+| Modello | Caratteristiche | Identificazione |
+|---|---|---|
+| **Polarizzato** | ~80% Z1-Z2, ~15-20% Z4+, < 5% Z3 | Low ≥ 75%, Mid ≤ 10%, High ≥ 10% |
+| **Piramidale** | Decrescente: Z1 > Z2 > Z3 > Z4 > Z5 | Low ≥ 75%, Mid > High |
+| **Threshold-dominant** | Eccessivo Z3 ("black hole") | Mid ≥ 30% |
+| **Mixed** | Nessun pattern chiaro | Tutto il resto |
+
+### Origine e letteratura
+
+| Riferimento | Contributo |
+|---|---|
+| **Seiler (2010)**. *What is best practice for training intensity and duration distribution in endurance athletes?* Int J Sports Physiol Perform, 5(3), 276–291. | **Framework adottato.** Review fondamentale: gli atleti élite di endurance convergono su una distribuzione ~80/20 (bassa/alta intensità) con minimo Z3. |
+| **Stöggl & Sperlich (2015)**. *Polarized training has greater impact on key endurance variables than threshold, high-intensity, or high-volume training.* Front Physiol, 6, 295. | Studio controllato su 48 atleti: il modello polarizzato produce il maggior incremento di VO₂max e TTE rispetto a threshold, HIIT e volume training. |
+| **Hydren & Cohen (2015)**. *Current scientific evidence for a polarized cardiovascular endurance training model.* J Strength Cond Res, 29(12), 3523–3530. | Review sistematica: evidenza moderata a favore del modello polarizzato, ma la distribuzione ottimale varia con il livello dell'atleta e la fase della stagione. |
+| **Muñoz et al. (2014)**. *Does polarized training improve performance in recreational runners?* Int J Sports Physiol Perform, 9(2), 265–272. | Benefici della polarizzazione anche nei runner amatoriali, non solo élite. |
+
+### Contesto critico
+
+1. **Zone diverse per sport**: il tool usa power zones per il ciclismo e HR zones per la corsa. Le zone HR sono meno precise (lag, drift, variabilità day-to-day).
+
+2. **80/20 non è universale**: la distribuzione ottimale dipende dalla fase di allenamento (base → più Z2, build → più Z4), dal livello dell'atleta, e dallo sport. La distribuzione piramidale è altrettanto efficace per molti atleti (Stöggl & Sperlich, 2015).
+
+3. **Z3 non è sempre "black hole"**: per ciclisti con FTP alto, il tempo in Z3 (sweet spot) è una strategia legittima per massimizzare lo stimulus con tempo limitato. La critica al Z3 è più rilevante per atleti con > 12h/settimana di allenamento.
+
+4. **Arrotondamento zone**: le zone di intervals.icu possono avere 5, 6 o 7 livelli a seconda delle impostazioni. Il tool normalizza a Z1-Z7 con zero-padding.
+
+---
+
+## 11. `get_longitudinal_trends` — Trend Analysis + HRR
+
+### Modello
+
+Regressione lineare su serie temporali di metriche chiave per rilevare **trend di progressione, stagnazione o sovrallenamento** nel periodo analizzato.
+
+Per ogni metrica, dati $n$ punti $(d_i, v_i)$ dove $d_i$ è l'offset in giorni dalla data di inizio:
+
+$$
+v = \beta_0 + \beta_1 \cdot d
+$$
+
+$$
+\beta_1 = \frac{n \sum d_i v_i - \sum d_i \sum v_i}{n \sum d_i^2 - (\sum d_i)^2}
+$$
+
+Il trend settimanale è $\beta_1 \times 7$.
+
+#### Metriche tracciate
+
+**Da attività**:
+
+| Metrica | Fonte | Direzione | Significato |
+|---|---|---|---|
+| Efficiency Factor | `icu_average_watts / icu_average_hr` | ↑ = meglio | Efficienza aerobica (Coggan, 2003) |
+| Heart Rate Recovery | `icu_hrr` | ↑ = meglio | Riattivazione parasimpatica post-effort |
+| Average Power | `icu_average_watts` | ↑ = meglio | Potenza media per sessione |
+| Normalized Power | `icu_weighted_avg_watts` | ↑ = meglio | Potenza normalizzata |
+| Decoupling | `decoupling` | ↓ = meglio | Drift cardiovascolare |
+| Training Load | `icu_training_load` | neutro | Carico per sessione (TSS) |
+
+**Da wellness**:
+
+| Metrica | Fonte | Direzione | Significato |
+|---|---|---|---|
+| CTL (Fitness) | `ctl` | ↑ = meglio | Carico cronico, proxy fitness |
+| ATL (Fatigue) | `atl` | neutro | Carico acuto |
+| TSB (Form) | `ctl - atl` | neutro | Balance fitness/fatica |
+| HRV (rMSSD) | `hrv` | ↑ = meglio | Variabilità cardiaca |
+| Resting HR | `restingHR` | ↓ = meglio | FC a riposo |
+| Weight | `weight` | neutro | Peso corporeo |
+| Sleep | `sleepSecs / 3600` | ↑ = meglio | Ore di sonno |
+
+#### Determinazione direzione
+
+- **Stable**: |slope_per_week| < 1% della media
+- **Improving/Declining**: basato sulla direzione del slope rispetto al `betterDirection` della metrica
+
+#### Flag automatici
+
+Il tool genera alert contestuali:
+
+| Condizione | Flag |
+|---|---|
+| CTL ↑ > 10% | "Fitness trending up — good progression" |
+| HRV ↓ > 15% | "HRV declining — monitor recovery, possible overreaching" |
+| Resting HR ↓ > 5% | "Cardiovascular fitness improving" |
+| HRR ↑ | "Better parasympathetic reactivation" |
+| HRR ↓ | "Possible fatigue accumulation or detraining" |
+| EF ↑ > 5% | "Aerobic base developing well" |
+
+### Heart Rate Recovery (HRR) — Focus
+
+L'HRR misura il calo della frequenza cardiaca nei 60 secondi successivi alla fine di uno sforzo. Un HRR più alto (calo più rapido) indica una migliore riattivazione parasimpatica.
+
+$$
+HRR_{60s} = HR_{peak} - HR_{60s\ post}
+$$
+
+intervals.icu calcola HRR automaticamente (`icu_hrr`) per le attività che hanno un cool-down identificabile.
+
+| HRR (bpm) | Classificazione |
+|---|---|
+| > 40 | Eccellente — ottima riattivazione vagale |
+| 30–40 | Buono |
+| 20–30 | Nella norma |
+| < 20 | Basso — possibile fatica residua, overtraining, o decondizionamento |
+
+### Origine e letteratura
+
+| Riferimento | Contributo |
+|---|---|
+| **Daanen et al. (2012)**. *Systematic review on heart rate recovery to monitor changes in training status in athletes.* Int J Sports Physiol Perform, 7(3), 251–260. | **Framework HRR adottato.** Review sistematica: l'HRR post-esercizio è un marker affidabile di fitness aerobico e risponde rapidamente a cambiamenti nel carico di allenamento. Un calo dell'HRR nel tempo segnala overreaching. |
+| **Lamberts et al. (2009)**. *Day-to-day changes in heart rate, RPE and performance during a 2-week overload period in endurance cyclists.* Br J Sports Med, 43(11), 813–817. | Il Lamberts Sub-Maximal Cycling Test (LSCT) usa HRR come indicatore primario: un calo > 3 bpm/settimana predice overreaching funzionale. |
+| **Buchheit (2014)**. *Monitoring training status with HR measures.* Front Physiol, 5, 73. | Review: HRR, HR al sub-massimale e HRV sono marker complementari per il monitoraggio dell'allenamento. L'HRR è più sensibile del HR sub-massimale per rilevare overreaching. |
+| **Cole et al. (1999)**. *Heart-rate recovery immediately after exercise as a predictor of mortality.* N Engl J Med, 341(18), 1351–1357. | Studio fondamentale: HRR < 12 bpm al 1° minuto post-esercizio è predittore indipendente di mortalità (anche in soggetti asintomatici). |
+
+### Contesto critico
+
+1. **Regressione lineare**: è il modello più semplice e potrebbe mancare trend non lineari (es. plateau seguito da calo). Per periodi > 6 mesi, un modello segmentato sarebbe più appropriato.
+
+2. **HRR auto-calculated**: il campo `icu_hrr` di intervals.icu dipende dall'identificazione automatica del punto di fine sforzo, che può essere impreciso per attività con cool-down mal definiti.
+
+3. **Stagionalità**: metriche come peso, HRV e CTL hanno componenti stagionali. Un trend apparente su 90 giorni potrebbe semplicemente riflettere una transizione di fase (es. base → build).
+
+4. **Confounders**: la potenza media per sessione può salire perché si fanno più intervalli (non perché si è più forti). L'EF è un indicatore più robusto dell'efficienza vera.
+
+5. **Soglia minima**: il tool richiede ≥ 3 data point per metrica per calcolare un trend. Con meno punti, la metrica viene omessa.
