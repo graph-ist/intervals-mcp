@@ -76,25 +76,27 @@ export function createServer(): { mcpServer: McpServer; toolCount: number; promp
   const PROMPT_SUFFIX =
     "Interpreta ogni valore usando i reference_ranges della risposta — indica la fascia e il significato per l'atleta. No emoji.";
 
-  server.prompt("morning_check", "Check mattutino: wellness, HRV, sonno, prontezza per la giornata", {}, async () => ({
+  server.prompt("morning_check", "Check mattutino: red-flag scanner rapido — verifica se ci sono motivi per scostare dal piano settimanale", {}, async () => ({
     messages: [
       {
         role: "user" as const,
         content: {
           type: "text" as const,
-          text: `Come sto oggi? Posso allenarmi forte o devo moderare?\n\nAnalizza recupero e wellness degli ultimi 7 giorni. Mostra Recovery Index, stato delle metriche fisiologiche rispetto alla baseline, trend recente, e segnali di attenzione.\n\n${PROMPT_SUFFIX}`,
-        },
-      },
-    ],
-  }));
+          text: `Check mattutino rapido. Questo NON è uno strumento decisionale quotidiano — serve solo a identificare red-flag che giustificano uno scostamento dal piano settimanale già stabilito.
 
-  server.prompt("evening_check", "Check serale post-allenamento: recupero, carico, rischio", {}, async () => ({
-    messages: [
-      {
-        role: "user" as const,
-        content: {
-          type: "text" as const,
-          text: `Check serale post-allenamento. Come ha risposto il corpo al carico di oggi?\n\nAnalizza stato di recupero e rischio da carico (ACWR, Monotony, Strain). Segnala red flag e dammi indicazioni per domani.\n\n${PROMPT_SUFFIX}`,
+Regola operativa: se il Recovery Index è tra 55 e 80 e non ci sono anomalie multigiorno (≥3 giorni consecutivi di trend negativo su indicatori indipendenti), il piano settimanale si esegue come previsto. Il rumore giornaliero dell'HRV (±15-20% intra-individuale, Plews et al. 2012) NON è motivo per modificare la sessione.
+
+Intervieni solo se:
+1. RI < 40 oggi
+2. Pattern multigiorno: ≥3 giorni consecutivi sotto baseline su ≥2 metriche indipendenti (autonomico + strutturale)
+3. Red flag singolo severo: HRV z < -2.0, RHR z < -2.0, SpO₂ < 93%
+
+Output richiesto:
+- RI di oggi con stato
+- Eventali red flag (se nessuna, scrivi "Nessuna anomalia — esegui il piano")
+- Solo se ci sono red flag: suggerimento di modifica specifico e reversibile
+
+${PROMPT_SUFFIX}`,
         },
       },
     ],
@@ -102,18 +104,35 @@ export function createServer(): { mcpServer: McpServer; toolCount: number; promp
 
   server.prompt(
     "weekly_review",
-    "Review domenicale: settimana completa, volume, carico, trend",
-    {
-      oldest: dateStr.optional().describe("Data inizio YYYY-MM-DD (default: 7 giorni fa)"),
-      newest: dateStr.optional().describe("Data fine YYYY-MM-DD (default: oggi)"),
-    },
-    async ({ oldest, newest }) => ({
+    "Review settimanale e pianificazione: strumento PRIMARIO di decisione. Analisi della settimana conclusa + impostazione della prossima.",
+    {},
+    async () => ({
       messages: [
         {
           role: "user" as const,
           content: {
             type: "text" as const,
-            text: `Review settimanale dal ${oldest ?? daysAgo(7)} al ${newest ?? today()}.\n\nAnalizza volume per sport, carico (TSS, CTL/ATL/TSB), rischio (ACWR/Monotony), recupero e wellness. Dai un voto alla settimana e suggerimenti per la prossima.\n\n${PROMPT_SUFFIX}`,
+            text: `Review settimanale dal ${daysAgo(7)} al ${today()}.
+
+Questo è lo strumento PRIMARIO di decisione. Le scelte di volume, intensità e distribuzione si fanno qui, non nei check giornalieri.
+
+PARTE 1 — ANALISI SETTIMANA CONCLUSA:
+- Volume per sport (ore, km, TSS)
+- Carico: CTL/ATL/TSB trend, ACWR, Monotony/Strain
+- Recupero: RI medio della settimana, trend, giorni con red flag
+- Aderenza al piano: sessioni completate vs pianificate, scostamenti e motivi
+- Trend longitudinali: EF, HRR, potenza se disponibili
+
+PARTE 2 — PIANIFICAZIONE PROSSIMA SETTIMANA:
+- Stato attuale di forma (TSB) e tendenza CTL
+- Settimana di carico, mantenimento o scarico? Giustifica con i dati
+- Volume target (ore/TSS) e distribuzione intensità (polarizzata: 80/20 o piramidale)
+- Sessioni chiave raccomandate con obiettivo fisiologico
+- Criteri di intervento giornaliero: definisci soglie specifiche per questa settimana che giustificherebbero uno scostamento dal piano (es. "se RI < 45 per 2+ giorni, sostituire la Z4 di giovedì con Z2")
+
+Principio guida: la varianza giornaliera è rumore (Plews et al. 2012). Solo pattern multigiorno su indicatori indipendenti sono segnale. I check giornalieri servono solo come trigger per eccezioni definite qui.
+
+${PROMPT_SUFFIX}`,
           },
         },
       ],
@@ -122,17 +141,27 @@ export function createServer(): { mcpServer: McpServer; toolCount: number; promp
 
   server.prompt(
     "activity_review",
-    "Analisi post-attivita: dettagli, zone, sforzo, decoupling",
-    {
-      activity_id: z.string().describe("ID attivita su intervals.icu"),
-    },
-    async ({ activity_id }) => ({
+    "Analisi post-attivita: trova automaticamente l'ultima Ride/Run/Swim di oggi e la analizza in dettaglio",
+    {},
+    async () => ({
       messages: [
         {
           role: "user" as const,
           content: {
             type: "text" as const,
-            text: `Analizza l'attività ${activity_id} in dettaglio.\n\nMostra riepilogo, metriche chiave, laps/split e zone. Se ha dati di potenza, includi decoupling aerobico e dFRC. Evidenzia punti di forza e cosa migliorare.\n\n${PROMPT_SUFFIX}`,
+            text: `Analisi post-attività.
+
+1. Cerca le attività di oggi con get_recent_activities (days=1). Filtra solo tipo Ride, Run, VirtualRide, VirtualRun o Swim. Ignora WeightTraining, Pilates, Yoga e simili. Prendi la più recente.
+2. Se non trovi nulla oggi, cerca ieri (days=2).
+3. Se non trovi nulla, rispondi "Nessuna attività Ride/Run/Swim trovata negli ultimi 2 giorni."
+
+Per l'attività trovata, analizza in dettaglio:
+- Riepilogo e metriche chiave
+- Laps/split e zone
+- Se ha dati di potenza: decoupling aerobico e dFRC
+- Punti di forza e cosa migliorare
+
+${PROMPT_SUFFIX}`,
           },
         },
       ],
@@ -511,7 +540,7 @@ Do NOT use prose descriptions like "90 min Z2 puro. Potenza 155-178W" — always
   // --- get_recovery_index ---
   server.tool(
     "get_recovery_index",
-    "Composite recovery & readiness dashboard. Computes z-scores of HRV (rMSSD), resting HR, sleep, Baevsky stress index, SpO₂, and respiratory rate against individual 30-day baselines. Returns per-metric status (green/amber/red), an overall Recovery Index 0-100, trend arrows, and red-flag alerts. Requires device-synced wellness data. IMPORTANT: always interpret every numeric value using the reference_ranges in the response — state which range it falls into and what it means for the athlete.",
+    "Composite recovery & readiness dashboard. Computes z-scores of HRV (rMSSD), resting HR, sleep, Baevsky stress index, SpO₂, and respiratory rate against individual 30-day baselines. Returns per-metric status (green/amber/red), an overall Recovery Index 0-100, trend arrows, and red-flag alerts. Requires device-synced wellness data. IMPORTANT: (1) always interpret every numeric value using the reference_ranges in the response. (2) Single-day readings are NOISE, not signal — HRV has ±15-20% intra-individual daily variance (Plews et al. 2012). Do NOT recommend training changes based on a single day's RI. Only multi-day patterns (≥3 days of converging trends across independent metrics) warrant plan modifications. Use the interpretation_guidance in the response for decision rules.",
     {
       days: z.number().optional().describe("Days of history for analysis (default 30, min 14)"),
     },

@@ -252,5 +252,38 @@ export async function computeRecoveryIndex(days: number, daysAgo: (n: number) =>
         { range: "≥ 140/≥ 90", label: "Ipertensione stadio 2", meaning: "Trattamento necessario" },
       ],
     },
+    interpretation_guidance: {
+      principle:
+        "La varianza giornaliera dell'HRV è ±15-20% anche a carico stabile (Plews et al. 2012, IJSPP). Un singolo punto dati NON è sufficiente per modificare il piano settimanale.",
+      decision_rules: [
+        {
+          condition: "RI 55-80, nessuna anomalia multigiorno",
+          action: "Esegui il piano settimanale come previsto. Nessun intervento.",
+        },
+        {
+          condition: "RI 40-55 per un singolo giorno, senza pattern",
+          action: "Nota il dato, ma esegui il piano. Un giorno isolato è probabilmente rumore.",
+        },
+        {
+          condition: "RI < 55 per ≥3 giorni consecutivi con ≥2 metriche indipendenti convergenti",
+          action:
+            "Segnale a media frequenza. Considerare riduzione intensità (non volume): sostituire sessioni Z4+ con Z2.",
+        },
+        {
+          condition: "RI < 40 oggi + red flag su metriche indipendenti",
+          action:
+            "Eccezione giustificata. Riposo attivo o sessione Z1 breve. Rivalutare nel weekly_review.",
+        },
+        {
+          condition: "RI > 80 stabile per ≥3 giorni",
+          action:
+            "Non aumentare il carico impulsivamente. La pianificazione resta settimanale. Annotare per il prossimo weekly_review.",
+        },
+      ],
+      asymmetry_note:
+        "Il costo di un falso positivo (saltare una sessione fattibile) è basso. Il costo di un falso negativo (ignorare overreaching reale) è alto. Questo giustifica un approccio conservativo, ma NON un processo decisionale quotidiano fine-grained.",
+      workflow:
+        "weekly_review = strumento primario di pianificazione. morning_check = trigger per eccezioni documentate nel weekly_review. NON usare il RI giornaliero come oracolo.",
+    },
   };
 }

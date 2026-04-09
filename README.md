@@ -35,7 +35,7 @@ npm run check       # Build + lint + test (tutto)
 
 ```
 src/
-├── server.ts           # MCP server: 54 tool, 4 prompt
+├── server.ts           # MCP server: 54 tool, 3 prompt
 ├── intervals.ts        # Client HTTP per intervals.icu API
 ├── types.ts            # Tipi TypeScript per le risposte API
 ├── http.ts             # Transport HTTP/Express (remote)
@@ -317,16 +317,15 @@ I tool custom `get_activity_dfrc`, `get_metabolic_profile`, `get_recovery_index`
 |---|---|
 | `create_custom_chart` | Crea grafico custom in intervals.icu |
 
-## Prompt / Shortcut (4)
+## Prompt / Shortcut (3)
 
 Accessibili da "Add from intervals" in claude.ai o dal menu prompt in Claude Desktop.
 
 | Prompt | Quando | Cosa fa |
 |---|---|---|
-| `morning_check` | Mattina | Dashboard visuale: Recovery Index gauge, barre metriche, sparkline HRV/FC, raccomandazione giornata |
-| `evening_check` | Sera post-allenamento | Dashboard visuale: Recovery Index + ACWR/Monotony/Strain gauge, red flag, raccomandazioni domani |
-| `weekly_review` | Domenica sera | Dashboard visuale: volume per sport, TSS giornaliero, CTL/ATL/TSB sparkline, voto settimana |
-| `activity_review` | Fine attivita | Dashboard visuale: metriche attivita, zone, pacing, decoupling gauge, dFRC chart |
+| `morning_check` | Mattina | Red-flag scanner: verifica se ci sono motivi per scostare dal piano settimanale. RI 55-80 senza anomalie = esegui il piano |
+| `weekly_review` | Domenica sera | Strumento PRIMARIO di decisione: analisi settimana conclusa + pianificazione prossima settimana con criteri di eccezione |
+| `activity_review` | Fine attività | Trova automaticamente l'ultima Ride/Run/Swim e la analizza: metriche, zone, pacing, decoupling, dFRC |
 
 ### Differenze tra i tool di wellness/fitness
 
