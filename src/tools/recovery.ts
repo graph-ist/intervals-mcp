@@ -271,8 +271,7 @@ export async function computeRecoveryIndex(days: number, daysAgo: (n: number) =>
         },
         {
           condition: "RI < 40 oggi + red flag su metriche indipendenti",
-          action:
-            "Eccezione giustificata. Riposo attivo o sessione Z1 breve. Rivalutare nel weekly_review.",
+          action: "Eccezione giustificata. Riposo attivo o sessione Z1 breve. Rivalutare nel weekly_review.",
         },
         {
           condition: "RI > 80 stabile per ≥3 giorni",

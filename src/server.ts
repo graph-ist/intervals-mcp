@@ -76,13 +76,17 @@ export function createServer(): { mcpServer: McpServer; toolCount: number; promp
   const PROMPT_SUFFIX =
     "Interpreta ogni valore usando i reference_ranges della risposta — indica la fascia e il significato per l'atleta. No emoji.";
 
-  server.prompt("morning_check", "Check mattutino: red-flag scanner rapido — verifica se ci sono motivi per scostare dal piano settimanale", {}, async () => ({
-    messages: [
-      {
-        role: "user" as const,
-        content: {
-          type: "text" as const,
-          text: `Check mattutino rapido. Questo NON è uno strumento decisionale quotidiano — serve solo a identificare red-flag che giustificano uno scostamento dal piano settimanale già stabilito.
+  server.prompt(
+    "morning_check",
+    "Check mattutino: red-flag scanner rapido — verifica se ci sono motivi per scostare dal piano settimanale",
+    {},
+    async () => ({
+      messages: [
+        {
+          role: "user" as const,
+          content: {
+            type: "text" as const,
+            text: `Check mattutino rapido. Questo NON è uno strumento decisionale quotidiano — serve solo a identificare red-flag che giustificano uno scostamento dal piano settimanale già stabilito.
 
 Regola operativa: se il Recovery Index è tra 55 e 80 e non ci sono anomalie multigiorno (≥3 giorni consecutivi di trend negativo su indicatori indipendenti), il piano settimanale si esegue come previsto. Il rumore giornaliero dell'HRV (±15-20% intra-individuale, Plews et al. 2012) NON è motivo per modificare la sessione.
 
@@ -97,10 +101,11 @@ Output richiesto:
 - Solo se ci sono red flag: suggerimento di modifica specifico e reversibile
 
 ${PROMPT_SUFFIX}`,
+          },
         },
-      },
-    ],
-  }));
+      ],
+    }),
+  );
 
   server.prompt(
     "weekly_review",
