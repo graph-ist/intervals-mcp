@@ -25,18 +25,29 @@ icu.configure(apiKey, athleteId);
 const app = express();
 app.use(express.json());
 
-// Richiede "Authorization: Bearer <MCP_AUTH_TOKEN>" su /mcp. Il server è
-// esposto pubblicamente (Tailscale Funnel / quick tunnel Cloudflare): senza
-// questo, chiunque conosca l'URL ha accesso in lettura/scrittura al conto
-// intervals.icu collegato (vedi F2 in aegis-infra/SECURITY-REVIEW.md).
-// timingSafeEqual per evitare timing attack sul confronto del token;
-// "/" e "/health" restano senza auth (health check, es. Render).
+// Richiede il token in "Authorization: Bearer <MCP_AUTH_TOKEN>" oppure come
+// query param "?token=<MCP_AUTH_TOKEN>" su /mcp. Il server è esposto
+// pubblicamente (Tailscale Funnel): senza questo, chiunque conosca l'URL ha
+// accesso in lettura/scrittura al conto intervals.icu collegato (vedi F2 in
+// aegis-infra/SECURITY-REVIEW.md). Il query param serve perché i connector
+// custom di Claude (claude.ai) non espongono un campo per header HTTP
+// personalizzati — solo OAuth Client ID/Secret, che qui non implementiamo —
+// quindi l'unico modo di passare il token è incorporarlo nell'URL stesso.
+// timingSafeEqual per evitare timing attack sul confronto; "/" e "/health"
+// restano senza auth (health check, es. Render).
 function requireAuth(req: express.Request, res: express.Response, next: express.NextFunction) {
+  const expected = Buffer.from(mcpAuthToken as string, "utf8");
+
   const header = req.headers.authorization;
-  const expected = Buffer.from(`Bearer ${mcpAuthToken}`, "utf8");
-  const provided = Buffer.from(typeof header === "string" ? header : "", "utf8");
-  const valid = provided.length === expected.length && timingSafeEqual(provided, expected);
-  if (!valid) {
+  const bearer = typeof header === "string" ? header.replace(/^Bearer\s+/i, "") : "";
+  const bearerBuf = Buffer.from(bearer, "utf8");
+  const bearerValid = bearerBuf.length === expected.length && timingSafeEqual(bearerBuf, expected);
+
+  const queryToken = req.query.token;
+  const queryBuf = Buffer.from(typeof queryToken === "string" ? queryToken : "", "utf8");
+  const queryValid = queryBuf.length === expected.length && timingSafeEqual(queryBuf, expected);
+
+  if (!bearerValid && !queryValid) {
     res.status(401).json({ error: "unauthorized" });
     return;
   }
