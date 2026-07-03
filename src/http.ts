@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { timingSafeEqual } from "node:crypto";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import express from "express";
 import * as icu from "./intervals.js";
@@ -7,9 +8,15 @@ import { createServer } from "./server.js";
 const apiKey = process.env.INTERVALS_API_KEY;
 const athleteId = process.env.INTERVALS_ATHLETE_ID ?? "0";
 const port = parseInt(process.env.PORT ?? "3001", 10);
+const mcpAuthToken = process.env.MCP_AUTH_TOKEN;
 
 if (!apiKey) {
   console.error("INTERVALS_API_KEY is required");
+  process.exit(1);
+}
+
+if (!mcpAuthToken) {
+  console.error("MCP_AUTH_TOKEN is required");
   process.exit(1);
 }
 
@@ -17,6 +24,26 @@ icu.configure(apiKey, athleteId);
 
 const app = express();
 app.use(express.json());
+
+// Richiede "Authorization: Bearer <MCP_AUTH_TOKEN>" su /mcp. Il server è
+// esposto pubblicamente (Tailscale Funnel / quick tunnel Cloudflare): senza
+// questo, chiunque conosca l'URL ha accesso in lettura/scrittura al conto
+// intervals.icu collegato (vedi F2 in aegis-infra/SECURITY-REVIEW.md).
+// timingSafeEqual per evitare timing attack sul confronto del token;
+// "/" e "/health" restano senza auth (health check, es. Render).
+function requireAuth(req: express.Request, res: express.Response, next: express.NextFunction) {
+  const header = req.headers.authorization;
+  const expected = Buffer.from(`Bearer ${mcpAuthToken}`, "utf8");
+  const provided = Buffer.from(typeof header === "string" ? header : "", "utf8");
+  const valid = provided.length === expected.length && timingSafeEqual(provided, expected);
+  if (!valid) {
+    res.status(401).json({ error: "unauthorized" });
+    return;
+  }
+  next();
+}
+
+app.use("/mcp", requireAuth);
 
 // Map to track active transports by session ID
 const MAX_SESSIONS = 100;
