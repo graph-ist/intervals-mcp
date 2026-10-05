@@ -158,7 +158,7 @@ Custom tools that compute physiological models on top of the API data. Formulas,
 | `get_fatigue_resistance` | Durability: fresh vs fatigued power curves, Fatigue Resistance Score, VO₂max retention (Maunder et al., 2021). Requires the kJ threshold `after_kj0` in the sport settings |
 | `get_polarization_analysis` | Time in zones, polarization index, comparison with the 80/20 model (Seiler, 2010; Stöggl & Sperlich, 2015) |
 | `get_longitudinal_trends` | Regression on EF, power, HRR, decoupling, CTL, HRV, resting HR, weight and sleep |
-| `get_load_tracker` | Load Tracker: weekly TSS for the previous week, the current week and the next 11 (about 3 months, Monday to Sunday). Only swim, bike, run and strength count; every other activity is noise and counts 0. Per week: target (manual `targets` by date, else the weekly `TARGET` calendar event, else the load of planned workouts), TSS done per sport, completion %, remaining TSS and, for the current week, the daily cumulative TSS. Weeks without a target stay empty |
+| `get_load_tracker` | Load Tracker: weekly TSS for the previous week, the current week and the next 11 (about 3 months, Monday to Sunday). Only swim, bike, run and strength count; every other activity is noise and counts 0. Gym load is weighted with the athlete's Activity Types fitness % (60% by default). Per week: target (manual `targets` by date, else the weekly `TARGET` calendar event, else the load of planned workouts), TSS done per sport, completion %, remaining TSS and, for the current week, the daily cumulative TSS. Weeks without a target stay empty |
 
 Which tool answers which question:
 

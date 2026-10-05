@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 vi.mock("../../intervals.js", () => ({
   getEvents: vi.fn(),
   getActivities: vi.fn(),
+  getAthlete: vi.fn(),
 }));
 
 import * as icu from "../../intervals.js";
@@ -40,6 +41,11 @@ describe("computeLoadTracker", () => {
       { start_date_local: "2026-10-07T08:00:00", type: "Run", icu_training_load: null },
     ] as never);
 
+    vi.mocked(icu.getAthlete).mockResolvedValue({
+      id: "i1",
+      icu_type_settings: [{ type: "WeightTraining", ctlFactor: 0.4, atlFactor: 0.75 }],
+    } as never);
+
     const r = await computeLoadTracker({ weeksBefore: 0, weeksAfter: 1, start: "2026-10-07" }, "2026-10-07");
 
     expect(r.range).toMatchObject({ from: "2026-10-05", to: "2026-10-18" });
@@ -49,14 +55,14 @@ describe("computeLoadTracker", () => {
       status: "current",
       target_tss: 140,
       target_source: "planned_events",
-      actual_tss: 135,
+      actual_tss: 120,
     });
-    expect(w1.actual_tss_by_sport).toEqual({ swim: 40, bike: 70, run: 0, strength: 25 });
+    expect(w1.actual_tss_by_sport).toEqual({ swim: 40, bike: 70, run: 0, strength: 10 }); // WeightTraining 25 x 40% (athlete setting);
     expect(w1).not.toHaveProperty("other_tss_not_counted"); // Yoga is noise
-    expect(w1.completion_pct).toBe(96.4);
-    expect(w1.remaining_tss).toBe(5);
+    expect(w1.completion_pct).toBe(85.7);
+    expect(w1.remaining_tss).toBe(20);
     expect(w1.days_left_including_today).toBe(5);
-    expect(w1.days?.map((d) => d.cumulative_tss)).toEqual([40, 135, 135, 135, 135, 135, 135]);
+    expect(w1.days?.map((d) => d.cumulative_tss)).toEqual([40, 120, 120, 120, 120, 120, 120]);
     expect(w2).toMatchObject({ position: 1, status: "future", target_tss: 50, actual_tss: 0 });
     expect(w2.days).toBeUndefined();
     expect(r.hint).toBeUndefined();
