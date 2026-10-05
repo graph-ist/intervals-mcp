@@ -158,7 +158,7 @@ Custom tools that compute physiological models on top of the API data. Formulas,
 | `get_fatigue_resistance` | Durability: fresh vs fatigued power curves, Fatigue Resistance Score, VO₂max retention (Maunder et al., 2021). Requires the kJ threshold `after_kj0` in the sport settings |
 | `get_polarization_analysis` | Time in zones, polarization index, comparison with the 80/20 model (Seiler, 2010; Stöggl & Sperlich, 2015) |
 | `get_longitudinal_trends` | Regression on EF, power, HRR, decoupling, CTL, HRV, resting HR, weight and sleep |
-| `get_weekly_load_tracker` | Weekly TSS tracker for the next weeks (default 6, Monday to Sunday): target per week (planned workout load or manual `targets`), TSS done split by swim, bike, run and strength, completion %, remaining TSS and a per-day cumulative breakdown, ready to be drawn as one filling bar per week |
+| `get_weekly_load_tracker` | Weekly TSS tracker on a window centered on the current week (default: 6 weeks before, the current one, 6 after; Monday to Sunday). Per week: target (planned workout load or manual `targets` by date), TSS done split by swim, bike, run and strength, completion %, remaining TSS, uncounted other activities (Hike, Yoga, ...) and, for the current week, the daily cumulative TSS |
 
 Which tool answers which question:
 
@@ -271,7 +271,7 @@ Available through the prompt picker in claude.ai and Claude Desktop.
 | `morning_check` | Morning | Red-flag scan: decides whether anything justifies deviating from the weekly plan. A recovery index between 55 and 80 without anomalies means executing the plan |
 | `weekly_review` | Sunday evening | Primary decision tool: review of the past week and planning of the next one, with explicit exception criteria |
 | `activity_review` | After a session | Finds the latest Ride, Run or Swim and analyses metrics, zones, pacing, decoupling and dFRC |
-| `weekly_load_tracker` | Any time | Calls `get_weekly_load_tracker` for the next 6 weeks and draws one bar per week, filled day by day with the TSS done per sport against the target. Asks for missing weekly targets instead of inventing them |
+| `weekly_load_tracker` | Any time | Calls `get_weekly_load_tracker` and draws stacked weekly columns, the current week in the center, filled with the TSS done per sport against the target. Asks for missing weekly targets instead of inventing them |
 
 The prompt texts are written in Italian.
 

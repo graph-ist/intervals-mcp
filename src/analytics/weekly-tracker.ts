@@ -38,18 +38,26 @@ function roundTotals(t: SportTotals): SportTotals {
 }
 
 export type WeeklyTrackerOptions = {
-  /** Number of weeks, starting from the week of `start` (default 6, max 26). */
-  weeks?: number;
-  /** Any date inside the first week, YYYY-MM-DD (default: today). */
-  start?: string;
-  /** Manual weekly TSS targets, index 0 = first week. Overrides the planned load for that week. */
-  targets?: number[];
+  /** Weeks before the current one (default 6, max 26). */
+  weeksBefore?: number;
+  /** Weeks after the current one (default 6, max 26). */
+  weeksAfter?: number;
+  /** Any date inside the week to put at the center, YYYY-MM-DD (default: today). */
+  center?: string;
+  /** Manual weekly TSS targets; week_start is any date inside the week. Overrides the planned load for that week. */
+  targets?: { week_start: string; tss: number }[];
 };
 
+const clampWeeks = (n: number | undefined) => Math.min(Math.max(Math.floor(n ?? 6), 0), 26);
+
 export async function computeWeeklyTracker(opts: WeeklyTrackerOptions, today: string) {
-  const weekCount = Math.min(Math.max(Math.floor(opts.weeks ?? 6), 1), 26);
-  const firstMonday = mondayOf(opts.start ?? today);
+  const before = clampWeeks(opts.weeksBefore);
+  const after = clampWeeks(opts.weeksAfter);
+  const weekCount = before + 1 + after;
+  const centerMonday = mondayOf(opts.center ?? today);
+  const firstMonday = addDays(centerMonday, -before * 7);
   const lastDay = addDays(firstMonday, weekCount * 7 - 1);
+  const manualTargets = new Map((opts.targets ?? []).map((t) => [mondayOf(t.week_start), t.tss]));
 
   const [events, activities] = await Promise.all([
     icu.getEvents(firstMonday, lastDay, "WORKOUT", { limit: 1000 }),
@@ -113,7 +121,7 @@ export async function computeWeeklyTracker(opts: WeeklyTrackerOptions, today: st
       return { date, tss: roundTotals(act), total_tss: round(sum(act)), cumulative_tss: round(cumulative) };
     });
 
-    const manual = opts.targets?.[i];
+    const manual = manualTargets.get(start);
     const plannedTotal = sum(plannedWeek);
     const target = manual != null ? manual : plannedTotal > 0 ? plannedTotal : null;
     const targetSource = manual != null ? "manual" : plannedTotal > 0 ? "planned_events" : "none";
@@ -129,6 +137,7 @@ export async function computeWeeklyTracker(opts: WeeklyTrackerOptions, today: st
     return {
       week_start: start,
       week_end: end,
+      position: i - before,
       status,
       target_tss: target != null ? round(target) : null,
       target_source: targetSource,
@@ -141,16 +150,16 @@ export async function computeWeeklyTracker(opts: WeeklyTrackerOptions, today: st
       ...(status === "current" && remaining != null && daysLeft
         ? { days_left_including_today: daysLeft, tss_per_day_needed: round(remaining / daysLeft) }
         : {}),
-      days,
+      ...(status === "current" && { days }),
     };
   });
 
   return {
-    range: { from: firstMonday, to: lastDay, today },
+    range: { from: firstMonday, to: lastDay, today, weeks_before: before, weeks_after: after },
     sports_tracked: TRACKED_SPORTS,
     note: "TSS is intervals.icu icu_training_load. Swim, bike (all ride types), run (all run types) and strength (WeightTraining, Workout, CrossFit) count toward the bars; other activities such as Yoga or Pilates are reported separately and not counted.",
     ...(weeksWithoutTarget > 0 && {
-      hint: `${weeksWithoutTarget} of ${weekCount} weeks have no target: the calendar has no planned workouts with load there. Pass 'targets' (weekly TSS per week) or add the plan to the calendar (create_training_plan), then call again.`,
+      hint: `${weeksWithoutTarget} of ${weekCount} weeks have no target: the calendar has no planned workouts with load there. Pass 'targets' (week_start + tss for each week) or add the plan to the calendar (create_training_plan), then call again.`,
     }),
     totals: {
       target_tss_weeks_with_target: round(targetSum),
@@ -159,6 +168,6 @@ export async function computeWeeklyTracker(opts: WeeklyTrackerOptions, today: st
     },
     weeks,
     chart_hint:
-      "One horizontal bar per week, length proportional to target_tss. Fill it with actual_tss_by_sport as colour segments (swim, bike, run, strength), mark the target at 100%, label completion_pct. Highlight the current week, show tss_per_day_needed for it, and optionally draw the per-day cumulative_tss as a step profile.",
+      "Vertical stacked columns on a weekly time axis, past weeks on the left, the current week (position 0) in the center, future weeks on the right. Each column is filled with actual_tss_by_sport as colour segments (swim, bike, run, strength); draw target_tss as an outline or marker on every week that has one (future weeks show only the target) and put other_tss_not_counted in a separate grey segment. Label completion_pct on past and current weeks. For the current week add the daily cumulative_tss profile and tss_per_day_needed.",
   };
 }

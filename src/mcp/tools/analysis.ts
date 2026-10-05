@@ -212,27 +212,29 @@ export function registerAnalysisTools(server: McpServer): void {
   // --- get_weekly_load_tracker ---
   server.tool(
     "get_weekly_load_tracker",
-    "Weekly TSS tracker for the next weeks (default 6, Monday to Sunday). For each week returns the TSS target (sum of planned workout load in the calendar, or manual targets passed in 'targets'), the TSS done so far split by swim, bike, run and strength (WeightTraining/Workout/CrossFit), completion %, remaining TSS, and the per-day breakdown with cumulative TSS so that a bar per week can be filled day by day. Yoga, Pilates and other types are reported separately and not counted. Render it as one stacked horizontal bar per week against its target (see chart_hint in the response).",
+    "Weekly TSS tracker on a window centered on the current week: by default the 6 weeks before (42 days), the current week and the 6 weeks after (Monday to Sunday). For each week returns the TSS target (sum of planned workout load in the calendar, or manual 'targets'), the TSS done split by swim, bike, run and strength (WeightTraining/Workout/CrossFit), completion %, remaining TSS, and for the current week the per-day cumulative TSS so its column can be filled day by day. Other activity types (Hike, Yoga, Pilates, ...) are reported separately as other_tss_not_counted. Render it as stacked columns on a time axis with the current week in the center (see chart_hint in the response).",
     {
-      weeks: z
-        .number()
-        .int()
-        .min(1)
-        .max(26)
-        .optional()
-        .describe("Number of weeks, from the week containing 'start' (default 6)"),
-      start: dateStr.optional().describe("Any date in the first week, YYYY-MM-DD (default today)"),
+      weeks_before: z.number().int().min(0).max(26).optional().describe("Weeks before the current one (default 6)"),
+      weeks_after: z.number().int().min(0).max(26).optional().describe("Weeks after the current one (default 6)"),
+      center: dateStr.optional().describe("Any date in the week to put at the center, YYYY-MM-DD (default today)"),
       targets: z
-        .array(z.number().min(0))
-        .max(26)
+        .array(
+          z.object({
+            week_start: dateStr.describe("Any date inside the week, YYYY-MM-DD"),
+            tss: z.number().min(0).describe("Weekly TSS target"),
+          }),
+        )
+        .max(60)
         .optional()
-        .describe(
-          "Manual weekly TSS targets, first entry = first week. Overrides planned workout load for those weeks",
-        ),
+        .describe("Manual weekly TSS targets. They override the planned workout load for those weeks"),
     },
-    async ({ weeks, start, targets }) => {
+    async ({ weeks_before, weeks_after, center, targets }) => {
       try {
-        return safeReturn(await computeWeeklyTracker({ weeks, start, targets }, today()));
+        const result = await computeWeeklyTracker(
+          { weeksBefore: weeks_before, weeksAfter: weeks_after, center, targets },
+          today(),
+        );
+        return safeReturn(result);
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
         return toolError(`API error: ${msg}`);
