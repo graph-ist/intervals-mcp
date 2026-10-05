@@ -42,7 +42,7 @@ Restart Claude Desktop afterwards.
 INTERVALS_API_KEY=xxx INTERVALS_ATHLETE_ID=yyy MCP_AUTH_TOKEN=$(openssl rand -hex 32) npm run serve
 ```
 
-The server listens on `http://localhost:3001/mcp`. `/` and `/health` are unauthenticated; `/mcp` requires the token, sent either as `Authorization: Bearer <token>` or as a `?token=` query parameter. The query parameter exists because claude.ai custom connectors cannot send custom headers, so the connector URL has the form:
+The server listens on `http://localhost:3001/mcp`. The transport is stateless: every POST is handled independently, there are no sessions to expire, and restarting the server does not break connected clients. `GET` and `DELETE` on `/mcp` return 405. `/` and `/health` are unauthenticated; `/mcp` requires the token, sent either as `Authorization: Bearer <token>` or as a `?token=` query parameter. The query parameter exists because claude.ai custom connectors cannot send custom headers, so the connector URL has the form:
 
 ```
 https://your-host.example/mcp?token=YOUR_MCP_AUTH_TOKEN
