@@ -47,9 +47,11 @@ Il modello Skiba (2012) è il più usato nelle piattaforme (WKO5, GoldenCheetah,
 
 | Parametro | Fonte | Note |
 |---|---|---|
-| CP (= FTP) | PD model da intervals.icu (`criticalPower`) o sport settings | Usato come soglia deplezione/ricostituzione |
+| CP | PD model da intervals.icu (`criticalPower`), altrimenti FTP da sport settings | W' va accoppiato al CP con cui è stato stimato: usare FTP al posto di CP sovrastima la deplezione |
 | W' (= FRC) | PD model (`wPrime`) o sport settings | Disponibili 4 modelli PD: MS_2P, MORTON_3P, FFT_CURVES, ECP |
 | Streams | API `/activity/{id}/streams` | Power array + time array |
+
+L'output include anche `intervals_icu_max_wbal_depletion_joules`, il valore calcolato da intervals.icu con i propri parametri, come riferimento: le differenze vengono dalla scelta di CP/W', non dalla formula.
 
 I 4 modelli PD di intervals.icu differiscono nella stima di W':
 
@@ -250,12 +252,13 @@ Indice composito di recovery basato su **z-score individuali** delle metriche fi
 | SpO₂ | `spO2` | ↑ = meglio | 1 | Flag overtraining/altitudine |
 | Respiratory Rate | `respiration` | ↓ = meglio | 1 | Elevata con stress/fatica (Nicolò et al., 2020) |
 
-**Metriche soggettive** (compilate dall'atleta su intervals.icu, scala 1-5):
+**Metriche soggettive** (compilate dall'atleta su intervals.icu, scala 1-4 dove **1 è lo stato migliore**: mood 1 = Great, motivation 1 = Extreme, sleepQuality 1 = Great, fatigue/soreness/stress/injury 1 = Low/None):
 
 | Metrica | Campo API | Direzione | Peso | Razionale |
 |---|---|---|---|---|
-| Mood | `mood` | ↑ = meglio | 1 | Stato emotivo generale |
-| Motivation | `motivation` | ↑ = meglio | 1 | Desiderio di allenarsi |
+| Mood | `mood` | ↓ = meglio | 1 | Stato emotivo generale |
+| Motivation | `motivation` | ↓ = meglio | 1 | Desiderio di allenarsi |
+| Sleep quality | `sleepQuality` | ↓ = meglio | 1 | Qualità percepita del sonno |
 | Fatigue | `fatigue` | ↓ = meglio | 1 | Percezione fatica residua |
 | Soreness | `soreness` | ↓ = meglio | 1 | Dolori muscolari/articolari |
 | Stress | `stress` | ↓ = meglio | 1 | Stress percepito (lavoro, vita) |
@@ -271,9 +274,9 @@ $$
 z_{raw}(d) = \frac{x(d) - \bar{x}_{30}}{s_{30}}
 $$
 
-dove $\bar{x}_{30}$ e $s_{30}$ sono media e deviazione standard dei 30 giorni precedenti (escluso il giorno corrente).
+dove $\bar{x}_{30}$ e $s_{30}$ sono media e deviazione standard dei 30 giorni precedenti (escluso il giorno corrente). Per l'HRV lo z-score è calcolato su $\ln(\text{rMSSD})$, perché rMSSD ha distribuzione log-normale (Plews et al. 2012); `baseline_mean` è riportato in ms (media geometrica).
 
-Per metriche dove "lower is better" (restingHR, avgSleepingHR, baevskySI, respiration):
+Per metriche dove "lower is better" (restingHR, avgSleepingHR, baevskySI, respiration e tutte le soggettive):
 
 $$
 z(d) = -z_{raw}(d)
@@ -398,24 +401,31 @@ $$
 
 | Monotony | Rischio |
 |---|---|
-| > 2.0 | Alto — uniformità eccessiva, associata a +5-7× incidenza URTI |
+| > 2.0 | Alto — uniformità eccessiva, associata a più malattie (Foster 1998) |
 | 1.5–2.0 | Moderato |
 | < 1.5 | Basso — carico ben variato |
 
-#### ACWR — Acute:Chronic Workload Ratio (Gabbett 2016)
+Se il carico è identico tutti i 7 giorni (deviazione standard 0) la monotony è fissata a 10 (massima), non a 0.
+
+#### ACWR — Acute:Chronic Workload Ratio
+
+Due versioni nell'output:
 
 $$
-ACWR = \frac{ATL}{CTL}
+ACWR_{EWMA} = \frac{ATL}{CTL} \qquad ACWR_{7:28} = \frac{\bar{L}_{7d}}{\bar{L}_{28d}}
 $$
 
-Usiamo i valori EWMA (Exponentially Weighted Moving Average) di intervals.icu, non il rolling ratio, evitando il coupling spurio documentato da Lolli et al. (2019).
+- `acwr`: ATL/CTL EWMA di intervals.icu (costanti 7 e 42 giorni), meno soggetto al coupling matematico (Lolli et al. 2019)
+- `acwr_rolling_7_28`: definizione originale di Gabbett, per confronto con la letteratura
 
-| ACWR | Risk Zone | Rischio relativo |
+| ACWR | Zona | Significato |
 |---|---|---|
 | < 0.80 | Undertraining | Decondizionamento |
-| 0.80–1.30 | **Sweet spot** | Rischio base |
-| 1.30–1.50 | Danger zone | ~2× rischio infortunio |
-| > 1.50 | Spike | ~3-5× rischio infortunio |
+| 0.80–1.30 | **Sweet spot** | Carico acuto in linea con il cronico |
+| 1.30–1.50 | Danger zone | Carico acuto sopra il solito |
+| > 1.50 | Spike | Incremento brusco |
+
+Le soglie vengono da sport di squadra e il valore predittivo dell'ACWR per gli infortuni è contestato (Impellizzeri et al. 2020): il tool non riporta più moltiplicatori di rischio ("2×", "3-5×"), solo la zona.
 
 ### Letteratura di riferimento
 
@@ -458,16 +468,17 @@ Un decoupling positivo indica che nella seconda metà la HR è salita (o la pote
 
 | Decoupling | Assessment |
 |---|---|
-| < 3% | Eccellente — base aerobica solida |
+| ≤ −3% | Drift negativo — warm-up lungo, raffreddamento o dati da verificare |
+| −3% a < 3% | Eccellente — base aerobica solida |
 | 3–5% | Buono — base adeguata |
 | 5–8% | Moderato — base aerobica da migliorare |
-| > 8% | Significativo — fitness aerobico insufficiente o pacing errato |
-| < 0% (negativo) | Inusuale — verificare qualità dati o affaticamento precoce |
+| ≥ 8% | Significativo — fitness aerobico, pacing, caldo o disidratazione |
 
 ### Implementazione
 
-- **Warm-up/cool-down**: esclude i primi 10 min e gli ultimi 5 min (configurabile)
+- **Warm-up/cool-down**: esclude i primi 10 min e gli ultimi 5 min (configurabile). Per questo il valore può differire da quello di intervals.icu, che usa tutta l'attività: l'output li riporta entrambi (`decoupling_pct`, `intervals_icu_decoupling_pct`). Verificato su dati reali: con esclusione 0/0 i due valori coincidono entro ~1-2 punti.
 - **Filtro**: scarta punti con HR ≤ 0 o potenza ≤ 0
+- **Validità**: avviso se Variability Index (NP/potenza media) > 1.05 o finestra analizzata < 60 min
 - **EF curve**: rolling 30s per visualizzare il drift nel tempo
 
 ### Letteratura di riferimento
@@ -491,14 +502,16 @@ Un decoupling positivo indica che nella seconda metà la HR è salita (o la pote
 
 ### Coggan Power Profile (Allen & Coggan 2010)
 
-Classificazione della potenza relativa (W/kg) a 4 durate chiave vs popolazione ciclistica maschile:
+Classificazione della potenza relativa (W/kg) a 4 durate chiave. Il tool usa gli estremi pubblicati della tabella (Untrained minimo, World Class massimo), distinti per sesso (`sex` del profilo atleta), e divide l'intervallo in 8 fasce uguali, perché la tabella originale è quasi lineare:
 
-| Durata | Untrained | Fair | Moderate | Good | V. Good | Excellent | Exceptional | World Class |
-|---|---|---|---|---|---|---|---|---|
-| 5s | 6.3 | 8.3 | 9.8 | 11.0 | 12.3 | 13.6 | 15.1 | 17.1 |
-| 1 min | 3.5 | 5.1 | 6.2 | 7.0 | 7.8 | 8.8 | 9.9 | 11.5 |
-| 5 min | 2.1 | 2.8 | 3.4 | 3.9 | 4.4 | 5.0 | 5.6 | 6.4 |
-| FTP | 1.8 | 2.4 | 2.9 | 3.3 | 3.7 | 4.2 | 4.7 | 5.4 |
+| Durata | Uomini min–max | Donne min–max |
+|---|---|---|
+| 5s | 10.17 – 24.04 | 8.17 – 19.42 |
+| 1 min | 5.64 – 11.50 | 4.70 – 9.29 |
+| 5 min | 2.33 – 7.60 | 1.87 – 6.61 |
+| FTP | 1.86 – 6.40 | 1.50 – 5.69 |
+
+Le soglie calcolate sono nell'output (`coggan_table`). La versione precedente usava valori errati soprattutto sui 5 s (6.3–17.1 W/kg), che sovrastimavano nettamente la categoria degli sprint.
 
 > **Allen & Coggan (2010)**. *Training and Racing with a Power Meter.* 2nd ed. VeloPress. Tabella 3.3.
 
@@ -637,35 +650,32 @@ Dove $\alpha_1$ è stimato come pendenza del fit lineare di $\log F(n)$ vs $\log
 | 0.50 | **Soglia anaerobica (VT2/AnT)** | Transizione verso dinamica anti-correlata |
 | < 0.50 | Intensità severa | Sopra la soglia anaerobica |
 
+#### Sorgente dei dati
+
+1. **Intervalli RR** (stream `hrv` di intervals.icu, ms battito-battito): α1 calcolato dal tool. Finestre di 120 s ogni 15 s, scale 4–16 battiti (Peng 1995), almeno 100 battiti per finestra. Artefatti: scarto di RR < 250 o > 2000 ms e di battiti che differiscono > 20% dalla mediana locale; finestre con > 5% di artefatti escluse (Rogers et al. 2021).
+2. **Stream `dfa_a1`** precalcolato, se presente.
+
 #### Rilevamento soglie
 
-Il tool scansiona il segnale DFA α1 smoothato (finestra rolling di 120s) alla ricerca dei **crossing point** (attraversamenti):
-
-- **AeT**: primo punto dove α1 scende sotto 0.75 con intensità crescente
-- **AnT**: primo punto dove α1 scende sotto 0.50
-
-Interpolazione lineare tra i punti adiacenti per stimare potenza e HR alla soglia esatta.
+Come in Rogers et al. (2021): regressione lineare di HR (e potenza) su α₁ per le finestre con 0.3 ≤ α₁ ≤ 1.25, poi lettura del valore a α₁ = 0.75 (HRVT1) e α₁ = 0.50 (HRVT2). Nessuna estrapolazione: se l'attività non attraversa il valore target la soglia non viene riportata.
 
 #### Confidence
 
-| Punti vicini al crossing (|α1 - target| < 0.15) | Confidence |
-|---|---|
-| ≥ 10 | High |
-| 5–9 | Medium |
-| < 5 | Low |
+Da r² della regressione HR–α₁: ≥ 0.7 high, 0.4–0.7 medium, < 0.4 low. Su uscite non a rampa r² è tipicamente basso: le soglie vanno lette come indicative.
+
+Verificato: rumore bianco → α₁ ≈ 0.5, passeggiata casuale → α₁ ≈ 1.5 (test automatici).
 
 ### Requisiti dispositivo
 
-DFA α1 richiede un dispositivo che registri gli **intervalli RR battito-battito** durante l'esercizio:
+DFA α1 richiede gli **intervalli RR battito-battito** registrati nel file FIT durante l'esercizio. intervals.icu li espone come stream `hrv`.
 
 | Dispositivo | Compatibile | Note |
 |---|---|---|
-| Garmin Fenix 7+, FR 265+, Edge 1040+ | ✅ | FirstBeat analytics, stream `dfa_a1` |
-| Polar H10 + HRV Logger app | ✅ | Gold standard per accuratezza RR |
-| Garmin HRM-Pro Plus + Garmin watch | ✅ | Fascia toracica necessaria |
-| Movesense sensor + app | ✅ | Sensore medico-grade |
-| **Apple Watch (qualsiasi modello)** | ❌ | Misura rMSSD solo a riposo, no beat-to-beat durante esercizio |
-| Sensori ottici da polso (generici) | ❌ | Insufficiente accuratezza RR |
+| Fascia toracica con RR (Polar H10, Garmin HRM-Pro/Dual, Wahoo TICKR) + device che registra RR | ✅ | Su Garmin attivare "Log HRV" / Registra HRV |
+| Polar H10 + app che esportano RR nel FIT | ✅ | Gold standard per accuratezza RR |
+| Movesense + app compatibile | ✅ | |
+| **Apple Watch** | ❌ | Nessun RR battito-battito negli allenamenti |
+| Sensori ottici da polso/braccio | ❌ | Precisione RR insufficiente sotto sforzo |
 
 ### Origine e letteratura
 
@@ -694,38 +704,31 @@ DFA α1 richiede un dispositivo che registri gli **intervalli RR battito-battito
 
 Aggrega il tempo nelle zone di intensità su tutte le attività di un periodo e sport, calcolando la distribuzione tra bassa, media e alta intensità.
 
-#### Gruppi di intensità
+#### Gruppi di intensità (modello a 3 zone di Seiler)
 
 $$
-\text{Low} = Z1 + Z2 \quad (\text{base aerobica})
+\text{Low} = Z1 + Z2 \ (< LT1) \qquad \text{Mid} = Z3 + Z4 \ (LT1\text{–}LT2) \qquad \text{High} = Z5+ \ (> LT2)
 $$
 
-$$
-\text{Mid} = Z3 \quad (\text{tempo / "black hole"})
-$$
+Mappatura valida per le 7 zone di potenza Coggan (Z4 = soglia 91–105% FTP) e le 7 zone FC Friel (Z5a inizia a LTHR). La versione precedente metteva Z4 (soglia) nella zona alta, sovrastimando l'alta intensità.
+
+#### Polarization Index (Treff et al. 2019)
 
 $$
-\text{High} = Z4 + Z5 + Z6 + Z7 \quad (\text{soglia e sopra})
+PI = \log_{10}\left(\frac{f_1}{f_2} \cdot f_3 \cdot 100\right)
 $$
 
-#### Polarization Index
-
-Misura composita della polarizzazione dell'allenamento:
-
-$$
-PI = \frac{\text{Low}}{\text{Mid}} \times \frac{\log_2(1 + \%_{High})}{5}
-$$
-
-Dove $\%_{High}$ è la percentuale di tempo ad alta intensità. PI > 2.0 indica un allenamento ben polarizzato.
+con $f_i$ frazioni di tempo nelle 3 zone; $f_2 = 0$ sostituito da 0.01; PI non calcolabile se $f_3 = 0$. **PI > 2.00 = polarizzato.**
 
 #### Modelli di distribuzione
 
-| Modello | Caratteristiche | Identificazione |
-|---|---|---|
-| **Polarizzato** | ~80% Z1-Z2, ~15-20% Z4+, < 5% Z3 | Low ≥ 75%, Mid ≤ 10%, High ≥ 10% |
-| **Piramidale** | Decrescente: Z1 > Z2 > Z3 > Z4 > Z5 | Low ≥ 75%, Mid > High |
-| **Threshold-dominant** | Eccessivo Z3 ("black hole") | Mid ≥ 30% |
-| **Mixed** | Nessun pattern chiaro | Tutto il resto |
+| Modello | Condizione |
+|---|---|
+| **Polarizzato** | $f_1 > f_3 > f_2$ e PI > 2.00 |
+| **Piramidale** | $f_1 > f_2 > f_3$ |
+| **Threshold** | $f_2$ massimo |
+| **HIIT** | $f_3$ massimo |
+| **Base** | Tutto il resto (bassa intensità dominante) |
 
 ### Origine e letteratura
 
@@ -772,8 +775,8 @@ Il trend settimanale è $\beta_1 \times 7$.
 
 | Metrica | Fonte | Direzione | Significato |
 |---|---|---|---|
-| Efficiency Factor | `icu_average_watts / icu_average_hr` | ↑ = meglio | Efficienza aerobica (Coggan, 2003) |
-| Heart Rate Recovery | `icu_hrr` | ↑ = meglio | Riattivazione parasimpatica post-effort |
+| Efficiency Factor | `icu_efficiency_factor` (NP/FC media di intervals.icu), altrimenti `icu_weighted_avg_watts / average_heartrate` | ↑ = meglio | Efficienza aerobica (Coggan, 2003) |
+| Heart Rate Recovery | `icu_hrr.hrr` (oggetto, calo di FC in bpm) | ↑ = meglio | Riattivazione parasimpatica post-effort |
 | Average Power | `icu_average_watts` | ↑ = meglio | Potenza media per sessione |
 | Normalized Power | `icu_weighted_avg_watts` | ↑ = meglio | Potenza normalizzata |
 | Decoupling | `decoupling` | ↓ = meglio | Drift cardiovascolare |
@@ -793,8 +796,10 @@ Il trend settimanale è $\beta_1 \times 7$.
 
 #### Determinazione direzione
 
-- **Stable**: |slope_per_week| < 1% della media
+- **Stable**: |slope_per_week| < 1% della media, **oppure r² < 0.1** (la retta spiega meno del 10% della varianza: rumore)
 - **Improving/Declining**: basato sulla direzione del slope rispetto al `betterDirection` della metrica
+- **change_abs / change_pct**: variazione tra inizio e fine **della retta di regressione** (non tra due singoli punti). `change_pct` è `null` per metriche che possono essere ≤ 0 (decoupling, TSB)
+- **Sport**: "Ride" include VirtualRide, GravelRide, MountainBikeRide; "Run" include VirtualRun, TrailRun
 
 #### Flag automatici
 

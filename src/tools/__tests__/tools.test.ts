@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 // Mock the intervals module before importing tools
 vi.mock("../../intervals.js", () => ({
   getWellness: vi.fn(),
+  getActivities: vi.fn(),
   getActivityStreams: vi.fn(),
   getActivity: vi.fn(),
   getPowerCurves: vi.fn(),
@@ -14,8 +15,10 @@ import * as icu from "../../intervals.js";
 import { computeDecoupling } from "../decoupling.js";
 import { computeDfrc } from "../dfrc.js";
 import { computeMetabolicProfile } from "../metabolic.js";
+import { computePolarization } from "../polarization.js";
 import { computeRecoveryIndex } from "../recovery.js";
 import { computeTrainingLoadRisk } from "../training-load.js";
+import { computeTrends } from "../trends.js";
 
 const daysAgo = (n: number) => {
   const d = new Date();
@@ -57,6 +60,20 @@ describe("computeDecoupling", () => {
     expect(result).not.toBeNull();
     expect(result!.decoupling_pct).toBeCloseTo(0, 1);
     expect(result!.assessment).toContain("Excellent");
+  });
+
+  it("reads the array-of-{type,data} stream shape returned by the real API", async () => {
+    const time = Array.from({ length: 120 }, (_, i) => i);
+    const streams = [
+      { type: "time", data: time },
+      { type: "watts", data: time.map(() => 200) },
+      { type: "heartrate", data: time.map(() => 140) },
+    ];
+    vi.mocked(icu.getActivityStreams).mockResolvedValue(streams as never);
+    vi.mocked(icu.getActivity).mockResolvedValue({ name: "Real", type: "VirtualRide" });
+    const result = await computeDecoupling("a1", 0, 0);
+    expect(result).not.toBeNull();
+    expect(result!.decoupling_pct).toBeCloseTo(0, 1);
   });
 
   it("handles exactly 60 valid points (boundary)", async () => {
@@ -335,5 +352,84 @@ describe("computeMetabolicProfile", () => {
       expect(short.pcr_pct).toBeGreaterThan(long.pcr_pct); // PCr dominates short
       expect(long.aerobic_pct).toBeGreaterThan(short.aerobic_pct); // aerobic dominates long
     }
+  });
+});
+
+// ─── Real API field shapes ───────────────────────────────────
+
+const realActivity = (i: number, extra: Record<string, unknown>) => ({
+  id: `i${i}`,
+  name: `A${i}`,
+  start_date_local: `${daysAgo(10 - i)}T08:00:00`,
+  moving_time: 3600,
+  ...extra,
+});
+
+describe("computePolarization with real fields", () => {
+  beforeEach(() => vi.resetAllMocks());
+
+  it("reads icu_zone_times objects and includes VirtualRide in Ride", async () => {
+    vi.mocked(icu.getActivities).mockResolvedValue([
+      realActivity(1, {
+        type: "VirtualRide",
+        icu_zone_times: [
+          { id: "Z1", secs: 2000 },
+          { id: "Z2", secs: 1000 },
+          { id: "Z3", secs: 100 },
+          { id: "Z4", secs: 300 },
+          { id: "Z5", secs: 200 },
+          { id: "SS", secs: 50 },
+        ],
+      }),
+    ] as never);
+    const result = await computePolarization(28, "Ride");
+    expect(result).not.toBeNull();
+    expect(result!.zone_metric).toBe("power");
+    expect(result!.zone_breakdown.find((z) => z.zone === 1)?.seconds).toBe(2000);
+  });
+
+  it("uses icu_hr_zone_times for runs", async () => {
+    vi.mocked(icu.getActivities).mockResolvedValue([
+      realActivity(1, { type: "TrailRun", icu_hr_zone_times: [600, 1800, 300, 200, 100, 0, 0] }),
+    ] as never);
+    const result = await computePolarization(28, "Run");
+    expect(result!.zone_metric).toBe("hr");
+  });
+
+  it("computes Treff PI on the Seiler 3-zone model (Z1-2 | Z3-4 | Z5+)", async () => {
+    // f1 = 0.80, f2 = 0.05, f3 = 0.15 \u2192 PI = log10(16 \u00b7 0.15 \u00b7 100) = log10(240) = 2.38
+    vi.mocked(icu.getActivities).mockResolvedValue([
+      realActivity(1, { type: "Ride", icu_hr_zone_times: [4000, 4000, 300, 200, 1000, 500, 0] }),
+    ] as never);
+    const result = await computePolarization(28, "Hike");
+    expect(result).toBeNull(); // sport filter excludes the Ride
+    vi.mocked(icu.getActivities).mockResolvedValue([
+      realActivity(1, { type: "Run", icu_hr_zone_times: [4000, 4000, 300, 200, 1000, 500, 0] }),
+    ] as never);
+    const run = await computePolarization(28, "Run");
+    expect(run!.polarization_index).toBeCloseTo(2.38, 2);
+    expect(run!.distribution_model).toBe("Polarized");
+  });
+});
+
+describe("computeTrends with real fields", () => {
+  beforeEach(() => vi.resetAllMocks());
+
+  it("computes EF and HRR from icu_efficiency_factor and the icu_hrr object", async () => {
+    vi.mocked(icu.getActivities).mockResolvedValue(
+      [1, 2, 3, 4].map((i) =>
+        realActivity(i, {
+          type: "VirtualRide",
+          icu_efficiency_factor: 1.4 + i * 0.02,
+          icu_hrr: { hrr: 20 + i },
+          icu_average_watts: 180,
+        }),
+      ) as never,
+    );
+    vi.mocked(icu.getWellness).mockResolvedValue([]);
+    const result = await computeTrends(30, "Ride");
+    const names = result!.trends.map((t) => t.metric);
+    expect(names).toContain("Efficiency Factor");
+    expect(names).toContain("Heart Rate Recovery");
   });
 });

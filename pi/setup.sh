@@ -38,15 +38,20 @@ if [ ! -f .env ]; then
     cat > .env << EOF
 INTERVALS_API_KEY=$API_KEY
 INTERVALS_ATHLETE_ID=$ATHLETE_ID
+MCP_AUTH_TOKEN=$(openssl rand -hex 32)
 PORT=3001
 EOF
-    echo ".env created"
+    chmod 600 .env
+    echo ".env created (MCP_AUTH_TOKEN generated: see .env, needed in the connector URL ?token=...)"
 else
     echo ".env already exists"
+    grep -q '^MCP_AUTH_TOKEN=' .env || { echo "MCP_AUTH_TOKEN=$(openssl rand -hex 32)" >> .env; echo "MCP_AUTH_TOKEN added to .env"; }
+    chmod 600 .env
 fi
 
 # 4. Test it works
 echo "Testing server..."
+set -a; . ./.env; set +a
 timeout 5 node dist/http.js &
 sleep 2
 HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:3001/)

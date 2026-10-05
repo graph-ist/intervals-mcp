@@ -138,13 +138,18 @@ export async function computeMetabolicProfile(sport?: string, curve_type?: strin
   else if (vlamax >= 0.3) vlamax_class = "Low (endurance)";
   else vlamax_class = "Very Low (ultra-endurance)";
 
-  // Coggan Power Profile Classification
-  const cogganTable: Record<string, number[]> = {
-    "5s": [6.3, 8.3, 9.8, 11.0, 12.3, 13.6, 15.1, 17.1],
-    "1min": [3.5, 5.1, 6.2, 7.0, 7.8, 8.8, 9.9, 11.5],
-    "5min": [2.1, 2.8, 3.4, 3.9, 4.4, 5.0, 5.6, 6.4],
-    ftp: [1.8, 2.4, 2.9, 3.3, 3.7, 4.2, 4.7, 5.4],
-  };
+  // Coggan Power Profile (Allen & Coggan 2010): published bottom (Untrained) and top (World Class) W/kg per sex;
+  // the 8 categories are approximated as equal bands between them, as the published table is close to linear
+  const female = String((athlete as Record<string, unknown> | undefined)?.sex ?? "").toUpperCase() === "F";
+  const cogganRange: Record<string, [number, number]> = female
+    ? { "5s": [8.17, 19.42], "1min": [4.7, 9.29], "5min": [1.87, 6.61], ftp: [1.5, 5.69] }
+    : { "5s": [10.17, 24.04], "1min": [5.64, 11.5], "5min": [2.33, 7.6], ftp: [1.86, 6.4] };
+  const cogganTable: Record<string, number[]> = Object.fromEntries(
+    Object.entries(cogganRange).map(([k, [lo, hi]]) => [
+      k,
+      Array.from({ length: 8 }, (_, i) => Math.round((lo + ((hi - lo) * i) / 8) * 100) / 100),
+    ]),
+  );
   const cogganLevels = [
     "Untrained",
     "Fair",
@@ -156,7 +161,7 @@ export async function computeMetabolicProfile(sport?: string, curve_type?: strin
     "World Class",
   ];
 
-  function classifyCoggan(wkg: number, key: string): { level: string; percentile_approx: number } {
+  function classifyCoggan(wkg: number, key: string): { level: string; band: string } {
     const thresholds = cogganTable[key];
     let idx = 0;
     for (let i = thresholds.length - 1; i >= 0; i--) {
@@ -165,7 +170,7 @@ export async function computeMetabolicProfile(sport?: string, curve_type?: strin
         break;
       }
     }
-    return { level: cogganLevels[idx], percentile_approx: Math.round((idx / 7) * 100) };
+    return { level: cogganLevels[idx], band: `${idx + 1}/8` };
   }
 
   const cogganProfile = {
@@ -184,7 +189,8 @@ export async function computeMetabolicProfile(sport?: string, curve_type?: strin
   else if (fri >= 70) fri_class = "Low — explosive but fatigable";
   else fri_class = "Very Low — sprinter profile, poor sustainability";
 
-  const vo2max_est = curveData?.vo2max_5m ?? Math.round((((MAP / mass) * 1000) / 75) * 10) / 10;
+  // ACSM cycle-ergometry estimate from 5-min power: VO2max ≈ 10.8 · W/kg + 7
+  const vo2max_est = Math.round((curveData?.vo2max_5m ?? 10.8 * (MAP / mass) + 7) * 10) / 10;
 
   const fftModel = curveData?.powerModels?.find((m) => m.type === "FFT_CURVES");
   const frc = fftModel?.wPrime ?? ss?.w_prime ?? ss?.wPrime ?? 20000;
@@ -207,6 +213,7 @@ export async function computeMetabolicProfile(sport?: string, curve_type?: strin
       w_per_kg_map: Math.round((P300 / mass) * 100) / 100,
     },
     coggan_power_profile: cogganProfile,
+    coggan_table: { sex: female ? "F" : "M", lower_bounds_w_per_kg: cogganTable, levels: cogganLevels },
     fatigue_resistance: {
       fri_pct: fri,
       classification: fri_class,
@@ -219,7 +226,7 @@ export async function computeMetabolicProfile(sport?: string, curve_type?: strin
       classification: vlamax_class,
       model:
         "Mader bioenergetic (3-component: aerobic τ=30s, PCr τ=23s, glycolytic residual, K=6.3 calibrated vs lactate test)",
-      note: "Accuracy depends on having maximal sprint efforts (10-30s) in the power curve. Without recent all-out short efforts, VLaMax may be overestimated.",
+      note: "Heuristic estimate from the power curve, NOT a lab value: it depends on assumed constants (τ, K) and on having true all-out 10-30 s efforts. Use for trends on the same athlete, not for comparison with INSCYD/lab tests.",
     },
     energy_system_breakdown: energyBreakdown,
     power_duration_curve: pdData.filter((_p, i) => i % Math.max(1, Math.floor(pdData.length / 200)) === 0),

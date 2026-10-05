@@ -1,185 +1,344 @@
 import * as icu from "../intervals.js";
-import { extractStream } from "./utils.js";
+import { getStream } from "./utils.js";
 
 /**
- * DFA α1 (Detrended Fluctuation Analysis alpha1) threshold detection.
+ * DFA α1 threshold detection.
  *
- * DFA α1 measures the fractal correlation properties of beat-to-beat HR intervals.
- * - α1 ≈ 1.0 at rest = correlated, healthy HRV
- * - α1 = 0.75 = first ventilatory/aerobic threshold (VT1/AeT)
- * - α1 = 0.50 = second ventilatory/anaerobic threshold (VT2/AnT)
+ * Source of α1, in order of preference:
+ * 1. RR intervals (`hrv` stream, beat-to-beat ms) → α1 computed here (Peng 1995, scales 4–16 beats,
+ *    2-min windows, artifact filtering as in Rogers et al. 2021).
+ * 2. A precomputed `dfa_a1` stream, if intervals.icu provides one.
  *
- * Requires a device that records DFA α1 as a stream (e.g. Garmin with FirstBeat,
- * Movesense + HRV Logger). Apple Watch does NOT provide DFA α1 during exercise.
- *
- * References:
- * - Rogers et al. (2021). J Sports Sci Med, 20(2), 303-311.
- * - Gronwald et al. (2019). Front Physiol, 10, 1202.
+ * Thresholds: linear regression of HR (and power) on α1, solved at α1 = 0.75 (HRVT1 ≈ VT1)
+ * and α1 = 0.50 (HRVT2 ≈ VT2), as in Rogers et al. (2021, 2022). No extrapolation outside the
+ * observed α1 range.
  */
 
-interface DfaThreshold {
+const WINDOW_SECS = 120;
+const STEP_SECS = 15;
+const MIN_BEATS = 100;
+const MAX_ARTIFACT_PCT = 5;
+const SCALES = [4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16];
+
+/** DFA short-term scaling exponent α1 of an RR series (ms). Returns null if too short. */
+export function dfaAlpha1(rr: number[]): number | null {
+  const n = rr.length;
+  if (n < SCALES[SCALES.length - 1] * 4) return null;
+  const mean = rr.reduce((s, v) => s + v, 0) / n;
+  const y = new Float64Array(n);
+  let acc = 0;
+  for (let i = 0; i < n; i++) {
+    acc += rr[i] - mean;
+    y[i] = acc;
+  }
+
+  const logN: number[] = [];
+  const logF: number[] = [];
+  for (const s of SCALES) {
+    const boxes = Math.floor(n / s);
+    if (boxes < 2) continue;
+    // Least-squares line over x = 0..s-1 for each box; x stats are the same for every box
+    const xMean = (s - 1) / 2;
+    let sxx = 0;
+    for (let x = 0; x < s; x++) sxx += (x - xMean) ** 2;
+    let sumSq = 0;
+    for (let b = 0; b < boxes; b++) {
+      const off = b * s;
+      let yMean = 0;
+      for (let x = 0; x < s; x++) yMean += y[off + x];
+      yMean /= s;
+      let sxy = 0;
+      for (let x = 0; x < s; x++) sxy += (x - xMean) * (y[off + x] - yMean);
+      const slope = sxy / sxx;
+      for (let x = 0; x < s; x++) {
+        const fit = yMean + slope * (x - xMean);
+        sumSq += (y[off + x] - fit) ** 2;
+      }
+    }
+    const F = Math.sqrt(sumSq / (boxes * s));
+    if (F > 0) {
+      logN.push(Math.log10(s));
+      logF.push(Math.log10(F));
+    }
+  }
+  if (logN.length < 3) return null;
+  return linreg(logN, logF).slope;
+}
+
+function linreg(x: number[], y: number[]): { slope: number; intercept: number; r2: number } {
+  const n = x.length;
+  const mx = x.reduce((s, v) => s + v, 0) / n;
+  const my = y.reduce((s, v) => s + v, 0) / n;
+  let sxy = 0;
+  let sxx = 0;
+  let syy = 0;
+  for (let i = 0; i < n; i++) {
+    sxy += (x[i] - mx) * (y[i] - my);
+    sxx += (x[i] - mx) ** 2;
+    syy += (y[i] - my) ** 2;
+  }
+  const slope = sxx > 0 ? sxy / sxx : 0;
+  const r2 = sxx > 0 && syy > 0 ? (sxy * sxy) / (sxx * syy) : 0;
+  return { slope, intercept: my - slope * mx, r2 };
+}
+
+/** Removes physiologically impossible beats and beats deviating >20% from the local median. */
+export function cleanRR(beats: { t: number; rr: number }[]): { clean: { t: number; rr: number }[]; artifacts: number } {
+  const clean: { t: number; rr: number }[] = [];
+  let artifacts = 0;
+  for (const b of beats) {
+    if (b.rr < 250 || b.rr > 2000) {
+      artifacts++;
+      continue;
+    }
+    const recent = clean.slice(-5).map((c) => c.rr);
+    if (recent.length >= 3) {
+      const sorted = [...recent].sort((a, c) => a - c);
+      const median = sorted[Math.floor(sorted.length / 2)];
+      if (Math.abs(b.rr - median) / median > 0.2) {
+        artifacts++;
+        continue;
+      }
+    }
+    clean.push(b);
+  }
+  return { clean, artifacts };
+}
+
+type Window = { t: number; dfa: number; power: number | null; hr: number | null; artifact_pct?: number };
+
+function windowsFromRR(
+  rrStream: unknown[],
+  timeArr: number[],
+  powerArr: number[],
+  hrArr: number[],
+): { windows: Window[]; artifactPct: number } {
+  const beats: { t: number; rr: number }[] = [];
+  for (let i = 0; i < rrStream.length; i++) {
+    const v = rrStream[i];
+    const t = timeArr[i] ?? i;
+    // The hrv stream holds, per sample, the RR intervals (ms) of the beats in that second
+    if (Array.isArray(v)) {
+      for (const rr of v) if (typeof rr === "number") beats.push({ t, rr });
+    } else if (typeof v === "number") {
+      beats.push({ t, rr: v });
+    }
+  }
+  const { clean, artifacts } = cleanRR(beats);
+  const artifactPct = beats.length ? (artifacts / beats.length) * 100 : 100;
+  if (clean.length < MIN_BEATS) return { windows: [], artifactPct };
+
+  const windows: Window[] = [];
+  const tEnd = clean[clean.length - 1].t;
+  let lo = 0;
+  let rawLo = 0;
+  for (let t0 = clean[0].t; t0 + WINDOW_SECS <= tEnd; t0 += STEP_SECS) {
+    while (lo < clean.length && clean[lo].t < t0) lo++;
+    let hi = lo;
+    while (hi < clean.length && clean[hi].t < t0 + WINDOW_SECS) hi++;
+    while (rawLo < beats.length && beats[rawLo].t < t0) rawLo++;
+    let rawHi = rawLo;
+    while (rawHi < beats.length && beats[rawHi].t < t0 + WINDOW_SECS) rawHi++;
+    const raw = rawHi - rawLo;
+    const winArtifactPct = raw > 0 ? ((raw - (hi - lo)) / raw) * 100 : 100;
+    if (hi - lo < MIN_BEATS || winArtifactPct > MAX_ARTIFACT_PCT) continue;
+    const dfa = dfaAlpha1(clean.slice(lo, hi).map((b) => b.rr));
+    if (dfa == null || !Number.isFinite(dfa)) continue;
+    windows.push({
+      t: t0 + WINDOW_SECS / 2,
+      dfa,
+      power: avgInRange(timeArr, powerArr, t0, t0 + WINDOW_SECS),
+      hr: avgInRange(timeArr, hrArr, t0, t0 + WINDOW_SECS),
+      artifact_pct: Math.round(winArtifactPct * 10) / 10,
+    });
+  }
+  return { windows, artifactPct };
+}
+
+function avgInRange(timeArr: number[], values: number[], t0: number, t1: number): number | null {
+  if (!values.length) return null;
+  let sum = 0;
+  let n = 0;
+  for (let i = 0; i < values.length; i++) {
+    const t = timeArr[i] ?? i;
+    if (t >= t0 && t < t1 && values[i] != null) {
+      sum += values[i];
+      n++;
+    }
+  }
+  return n ? sum / n : null;
+}
+
+function windowsFromDfaStream(dfaArr: number[], timeArr: number[], powerArr: number[], hrArr: number[]): Window[] {
+  const windows: Window[] = [];
+  const valid = dfaArr.map((dfa, i) => ({ t: timeArr[i] ?? i, dfa })).filter((p) => p.dfa > 0 && p.dfa < 2.0);
+  if (!valid.length) return windows;
+  for (let t0 = valid[0].t; t0 + WINDOW_SECS <= valid[valid.length - 1].t; t0 += STEP_SECS) {
+    const inWin = valid.filter((p) => p.t >= t0 && p.t < t0 + WINDOW_SECS);
+    if (inWin.length < 10) continue;
+    windows.push({
+      t: t0 + WINDOW_SECS / 2,
+      dfa: inWin.reduce((s, p) => s + p.dfa, 0) / inWin.length,
+      power: avgInRange(timeArr, powerArr, t0, t0 + WINDOW_SECS),
+      hr: avgInRange(timeArr, hrArr, t0, t0 + WINDOW_SECS),
+    });
+  }
+  return windows;
+}
+
+interface Threshold {
   name: string;
   dfa_target: number;
-  watts: number | null;
   hr: number | null;
-  time_secs: number | null;
-  confidence: string;
+  watts: number | null;
+  r2_hr: number | null;
+  confidence: "high" | "medium" | "low";
+}
+
+function solveAt(windows: Window[], key: "hr" | "power", target: number) {
+  const pts = windows.filter((w) => w[key] != null && w[key]! > 0 && w.dfa >= 0.3 && w.dfa <= 1.25);
+  if (pts.length < 8) return null;
+  // Regress the metric on α1 (Rogers 2021: HR vs α1), then read it at the target α1
+  const fit = linreg(
+    pts.map((p) => p.dfa),
+    pts.map((p) => p[key]!),
+  );
+  if (fit.slope >= 0) return null; // intensity must rise as α1 falls
+  return { value: fit.intercept + fit.slope * target, r2: fit.r2 };
+}
+
+function findThreshold(windows: Window[], target: number): Threshold | { message: string } {
+  const minDfa = Math.min(...windows.map((w) => w.dfa));
+  const maxDfa = Math.max(...windows.map((w) => w.dfa));
+  if (minDfa > target || maxDfa < target) {
+    return {
+      message: `α1 = ${target} not reached in this activity (observed ${minDfa.toFixed(2)}–${maxDfa.toFixed(2)}). Use a ramp test that goes above threshold.`,
+    };
+  }
+  const hr = solveAt(windows, "hr", target);
+  const pw = solveAt(windows, "power", target);
+  if (!hr && !pw) return { message: "No consistent relationship between α1 and HR/power in this activity." };
+  const r2 = hr?.r2 ?? pw?.r2 ?? 0;
+  return {
+    name: target === 0.75 ? "HRVT1 ≈ aerobic threshold (VT1)" : "HRVT2 ≈ anaerobic threshold (VT2)",
+    dfa_target: target,
+    hr: hr ? Math.round(hr.value) : null,
+    watts: pw ? Math.round(pw.value) : null,
+    r2_hr: hr ? Math.round(hr.r2 * 100) / 100 : null,
+    confidence: r2 >= 0.7 ? "high" : r2 >= 0.4 ? "medium" : "low",
+  };
 }
 
 export async function computeDfaAnalysis(activityId: string) {
   const [streams, activity] = await Promise.all([
-    icu.getActivityStreams(activityId, ["time", "watts", "heartrate", "dfa_a1"]),
+    icu.getActivityStreams(activityId, ["time", "watts", "heartrate", "hrv", "dfa_a1"]),
     icu.getActivity(activityId),
   ]);
 
-  const timeArr = extractStream(streams?.time);
-  const powerArr = extractStream(streams?.watts);
-  const hrArr = extractStream(streams?.heartrate);
-  const dfaArr = extractStream(streams?.dfa_a1);
+  const timeArr = getStream(streams, "time");
+  const powerArr = getStream(streams, "watts");
+  const hrArr = getStream(streams, "heartrate");
+  const rrStream = getStream(streams, "hrv") as unknown[];
+  const dfaArr = getStream(streams, "dfa_a1").filter((v) => v != null);
 
-  if (dfaArr.length === 0) {
+  let windows: Window[] = [];
+  let source: "rr_intervals" | "dfa_a1_stream" | null = null;
+  let artifactPct: number | null = null;
+
+  if (rrStream.some((v) => v != null)) {
+    const r = windowsFromRR(rrStream, timeArr, powerArr, hrArr);
+    windows = r.windows;
+    artifactPct = Math.round(r.artifactPct * 10) / 10;
+    source = "rr_intervals";
+  }
+  if (windows.length === 0 && dfaArr.length > 0) {
+    windows = windowsFromDfaStream(getStream(streams, "dfa_a1"), timeArr, powerArr, hrArr);
+    source = "dfa_a1_stream";
+  }
+
+  if (windows.length === 0) {
     return {
       available: false,
       activity_id: activityId,
       activity_type: activity?.type,
+      ...(artifactPct != null && { rr_artifact_pct: artifactPct }),
       message:
-        "No DFA α1 stream found for this activity. DFA α1 requires a device that records beat-to-beat RR intervals during exercise (e.g. Garmin with FirstBeat, Polar H10 + HRV Logger). Apple Watch does NOT provide this data.",
+        artifactPct != null && artifactPct > MAX_ARTIFACT_PCT
+          ? `RR data present but too noisy (${artifactPct}% artifacts, max ${MAX_ARTIFACT_PCT}% per window). Check strap contact/moisture.`
+          : "No beat-to-beat RR data for this activity. DFA α1 needs RR intervals recorded by a chest strap and saved in the FIT file.",
       device_requirements: {
         compatible: [
-          "Garmin watches with FirstBeat (Fenix 7+, Forerunner 265+, Edge 1040+)",
-          "Polar H10 chest strap + HRV Logger app",
-          "Movesense sensor + compatible app",
-          "Garmin HRM-Pro Plus chest strap + compatible Garmin watch",
+          "Chest strap with RR output (Polar H10, Garmin HRM-Pro/HRM-Dual, Wahoo TICKR) paired to a head unit that records RR",
+          "Garmin watches/Edge: enable 'Log HRV' (Record HRV) in settings — intervals.icu then shows the 'hrv' stream",
+          "Polar H10 + apps that export RR in the FIT file",
         ],
-        not_compatible: [
-          "Apple Watch (any model) — measures rMSSD at rest only, no beat-to-beat DFA during exercise",
-          "Optical-only wrist HR sensors",
-          "Most consumer fitness trackers",
-        ],
+        not_compatible: ["Optical wrist/arm HR (RR timing too imprecise during exercise)", "Apple Watch workouts"],
       },
     };
   }
 
-  // Build valid data points (with rolling 2-min window for smoothing)
-  const windowSecs = 120;
-  const points: { t: number; power: number; hr: number; dfa: number }[] = [];
+  const aet = findThreshold(windows, 0.75);
+  const ant = findThreshold(windows, 0.5);
 
-  for (let i = 0; i < dfaArr.length; i++) {
-    const t = timeArr[i] ?? i;
-    const p = powerArr[i] ?? 0;
-    const hr = hrArr[i] ?? 0;
-    const dfa = dfaArr[i];
-    if (dfa > 0 && dfa < 2.0 && hr > 0) {
-      points.push({ t, power: p, hr, dfa });
-    }
-  }
-
-  if (points.length < 30) {
-    return {
-      available: false,
-      activity_id: activityId,
-      message: "Insufficient valid DFA α1 data points (need ≥ 30).",
-    };
-  }
-
-  // Smooth DFA with rolling window
-  const smoothed: { t: number; power: number; hr: number; dfa: number }[] = [];
-  for (let i = 0; i < points.length; i++) {
-    const windowStart = points[i].t - windowSecs;
-    const windowPoints = points.filter((p) => p.t >= windowStart && p.t <= points[i].t);
-    if (windowPoints.length >= 3) {
-      const avgDfa = windowPoints.reduce((s, p) => s + p.dfa, 0) / windowPoints.length;
-      const avgPower = windowPoints.reduce((s, p) => s + p.power, 0) / windowPoints.length;
-      const avgHr = windowPoints.reduce((s, p) => s + p.hr, 0) / windowPoints.length;
-      smoothed.push({
-        t: points[i].t,
-        power: Math.round(avgPower),
-        hr: Math.round(avgHr),
-        dfa: Math.round(avgDfa * 1000) / 1000,
-      });
-    }
-  }
-
-  // Find threshold crossings (DFA decreasing as intensity increases)
-  function findThreshold(target: number): DfaThreshold | null {
-    // Look for the point where smoothed DFA crosses the target from above
-    for (let i = 1; i < smoothed.length; i++) {
-      if (smoothed[i - 1].dfa >= target && smoothed[i].dfa < target) {
-        // Interpolate
-        const ratio = (smoothed[i - 1].dfa - target) / (smoothed[i - 1].dfa - smoothed[i].dfa);
-        const watts = Math.round(smoothed[i - 1].power + ratio * (smoothed[i].power - smoothed[i - 1].power));
-        const hr = Math.round(smoothed[i - 1].hr + ratio * (smoothed[i].hr - smoothed[i - 1].hr));
-        const time = Math.round(smoothed[i - 1].t + ratio * (smoothed[i].t - smoothed[i - 1].t));
-
-        // Confidence based on data density around crossing
-        const nearby = smoothed.filter((p) => Math.abs(p.dfa - target) < 0.15).length;
-        const confidence = nearby >= 10 ? "high" : nearby >= 5 ? "medium" : "low";
-
-        return {
-          name: target === 0.75 ? "Aerobic Threshold (VT1/AeT)" : "Anaerobic Threshold (VT2/AnT)",
-          dfa_target: target,
-          watts,
-          hr,
-          time_secs: time,
-          confidence,
-        };
-      }
-    }
-    return null;
-  }
-
-  const aet = findThreshold(0.75);
-  const ant = findThreshold(0.5);
-
-  // DFA α1 time series (downsampled for chart)
-  const step = Math.max(1, Math.floor(smoothed.length / 100));
-  const chart = smoothed
+  const step = Math.max(1, Math.floor(windows.length / 120));
+  const chart = windows
     .filter((_, i) => i % step === 0)
-    .map((p) => ({
-      time_secs: p.t,
-      watts: p.power,
-      hr: p.hr,
-      dfa_a1: p.dfa,
+    .map((w) => ({
+      time_secs: Math.round(w.t),
+      dfa_a1: Math.round(w.dfa * 1000) / 1000,
+      hr: w.hr != null ? Math.round(w.hr) : null,
+      watts: w.power != null ? Math.round(w.power) : null,
     }));
 
-  // Zone recommendation based on thresholds
+  const bothHr = "hr" in aet && "hr" in ant && aet.hr != null && ant.hr != null;
+  const bothW = "watts" in aet && "watts" in ant && aet.watts != null && ant.watts != null;
   const zones =
-    aet && ant
+    bothHr || bothW
       ? {
-          zone1_recovery: { max_watts: Math.round(aet.watts! * 0.75), max_hr: Math.round(aet.hr! * 0.9) },
-          zone2_aerobic: {
-            watts: `${Math.round(aet.watts! * 0.75)}-${aet.watts}`,
-            hr: `${Math.round(aet.hr! * 0.9)}-${aet.hr}`,
+          zone1_below_hrvt1: {
+            max_hr: bothHr ? (aet as Threshold).hr : null,
+            max_watts: bothW ? (aet as Threshold).watts : null,
           },
-          zone3_tempo: { watts: `${aet.watts}-${ant.watts}`, hr: `${aet.hr}-${ant.hr}` },
-          zone4_threshold: {
-            watts: `${ant.watts}-${Math.round(ant.watts! * 1.05)}`,
-            hr: `${ant.hr}-${Math.round(ant.hr! * 1.03)}`,
+          zone2_between: {
+            hr: bothHr ? `${(aet as Threshold).hr}-${(ant as Threshold).hr}` : null,
+            watts: bothW ? `${(aet as Threshold).watts}-${(ant as Threshold).watts}` : null,
           },
-          note: "DFA-based zones are individualized from THIS activity's physiological responses, not population averages.",
+          zone3_above_hrvt2: {
+            min_hr: bothHr ? (ant as Threshold).hr : null,
+            min_watts: bothW ? (ant as Threshold).watts : null,
+          },
+          note: "3-zone model (Seiler): Z1 < HRVT1, Z2 between thresholds, Z3 > HRVT2. Individual to this activity.",
         }
       : null;
 
   return {
     available: true,
+    source,
     activity_id: activityId,
     activity_type: activity?.type,
     activity_name: activity?.name,
-    data_points: smoothed.length,
-    thresholds: {
-      aerobic_threshold: aet ?? { message: "DFA α1 = 0.75 crossing not found — ramp test protocol recommended" },
-      anaerobic_threshold: ant ?? { message: "DFA α1 = 0.50 crossing not found — ramp test protocol recommended" },
+    quality: {
+      windows: windows.length,
+      window_secs: WINDOW_SECS,
+      step_secs: STEP_SECS,
+      ...(artifactPct != null && { rr_artifact_pct: artifactPct }),
+      dfa_range: [
+        Math.round(Math.min(...windows.map((w) => w.dfa)) * 100) / 100,
+        Math.round(Math.max(...windows.map((w) => w.dfa)) * 100) / 100,
+      ],
     },
+    thresholds: { aerobic_threshold: aet, anaerobic_threshold: ant },
     dfa_zones: zones,
     chart_data: chart,
     reference_ranges: {
       dfa_a1_values: [
-        { range: "> 1.0", label: "Rest/Very Low Intensity", meaning: "Well below AeT, correlated cardiac dynamics" },
-        { range: "0.75–1.0", label: "Low-Moderate Intensity", meaning: "Below aerobic threshold (Zone 1-2)" },
-        { range: "0.50–0.75", label: "Moderate-High Intensity", meaning: "Between AeT and AnT (Zone 3)" },
-        { range: "< 0.50", label: "High-Severe Intensity", meaning: "Above anaerobic threshold (Zone 4-5)" },
+        { range: "> 1.0", label: "Low intensity", meaning: "Well below aerobic threshold, correlated dynamics" },
+        { range: "0.75–1.0", label: "Below VT1", meaning: "Moderate, below aerobic threshold" },
+        { range: "0.50–0.75", label: "Between VT1 and VT2", meaning: "Heavy domain (Zone 2 of 3-zone model)" },
+        { range: "< 0.50", label: "Above VT2", meaning: "Severe domain" },
       ],
-      note: "DFA α1 thresholds are most reliable from graded ramp tests (Rogers et al., 2021). Steady-state or interval activities may not show clean crossings.",
+      confidence: "Based on r² of the HR–α1 regression: ≥ 0.7 high, 0.4–0.7 medium, < 0.4 low.",
+      note: "Most reliable on a graded ramp test (Rogers et al. 2021). Steady or interval sessions often do not span both thresholds; artifacts > 5% per window are excluded.",
     },
   };
 }

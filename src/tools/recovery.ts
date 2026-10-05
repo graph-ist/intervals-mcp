@@ -29,13 +29,15 @@ const METRICS: [keyof WellnessDay, boolean][] = [
   ["baevskySI", false],
   ["spO2", true],
   ["respiration", false],
-  // Subjective fields — included when the athlete fills them in (1-5 scale)
-  ["mood", true],
-  ["motivation", true],
-  ["fatigue", false], // higher fatigue = worse
-  ["soreness", false], // higher soreness = worse
-  ["stress", false], // higher stress = worse
-  ["injury", false], // higher injury = worse
+  // Subjective fields, intervals.icu 1-4 scales where 1 is the best state
+  // (mood 1=Great, motivation 1=Extreme, sleepQuality 1=Great, fatigue/soreness/stress/injury 1=Low/None)
+  ["mood", false],
+  ["motivation", false],
+  ["sleepQuality", false],
+  ["fatigue", false],
+  ["soreness", false],
+  ["stress", false],
+  ["injury", false],
 ];
 
 const WEIGHTS: Record<string, number> = {
@@ -50,6 +52,7 @@ const WEIGHTS: Record<string, number> = {
   // Subjective: lower weight individually but collectively significant (Saw et al., 2016)
   mood: 1,
   motivation: 1,
+  sleepQuality: 1,
   fatigue: 1,
   soreness: 1,
   stress: 1,
@@ -78,13 +81,16 @@ export async function computeRecoveryIndex(days: number, daysAgo: (n: number) =>
     const dayResult: DayResult = { date: day.id, metrics: {}, readiness_device: day.readiness ?? null } as DayResult;
 
     for (const [field, higherBetter] of METRICS) {
-      const val = day[field] as number | undefined;
-      if (val == null) continue;
+      const rawVal = day[field] as number | undefined;
+      if (rawVal == null) continue;
+      // rMSSD is log-normally distributed: z-scores on ln(rMSSD) (Plews et al. 2012)
+      const tf = (v: number) => (field === "hrv" ? Math.log(Math.max(v, 1)) : v);
+      const val = tf(rawVal);
 
       const baseline: number[] = [];
       for (let j = Math.max(0, i - 30); j < i; j++) {
         const v = data[j]?.[field] as number | undefined;
-        if (v != null) baseline.push(v);
+        if (v != null) baseline.push(tf(v));
       }
       if (baseline.length < 5) continue;
 
@@ -100,7 +106,7 @@ export async function computeRecoveryIndex(days: number, daysAgo: (n: number) =>
       const recent7: number[] = [];
       for (let j = Math.max(0, i - 6); j <= i; j++) {
         const v = data[j]?.[field] as number | undefined;
-        if (v != null) recent7.push(v);
+        if (v != null) recent7.push(tf(v));
       }
       let trend = "→";
       if (recent7.length >= 3) {
@@ -117,8 +123,8 @@ export async function computeRecoveryIndex(days: number, daysAgo: (n: number) =>
       }
 
       dayResult.metrics[field] = {
-        value: Math.round(val * 100) / 100,
-        baseline_mean: Math.round(mean * 100) / 100,
+        value: Math.round(rawVal * 100) / 100,
+        baseline_mean: Math.round((field === "hrv" ? Math.exp(mean) : mean) * 100) / 100,
         z_score: Math.round(z * 100) / 100,
         status,
         trend,
@@ -175,7 +181,7 @@ export async function computeRecoveryIndex(days: number, daysAgo: (n: number) =>
   const todayResult = results[results.length - 1];
 
   // Count how many days have subjective data filled in
-  const SUBJECTIVE_KEYS = ["mood", "motivation", "fatigue", "soreness", "stress", "injury"];
+  const SUBJECTIVE_KEYS = ["mood", "motivation", "sleepQuality", "fatigue", "soreness", "stress", "injury"];
   const subjectiveDays = results.filter((r) => SUBJECTIVE_KEYS.some((k) => r.metrics[k] != null)).length;
   const hasSubjective = subjectiveDays > 0;
   const subjectiveFields = SUBJECTIVE_KEYS.filter((k) => todayResult?.metrics[k] != null);
@@ -192,7 +198,7 @@ export async function computeRecoveryIndex(days: number, daysAgo: (n: number) =>
       days_with_data: subjectiveDays,
       today_fields: subjectiveFields,
       note: hasSubjective
-        ? `Subjective data included (${subjectiveFields.length}/6 fields today). RI accuracy improved.`
+        ? `Subjective data included (${subjectiveFields.length}/${SUBJECTIVE_KEYS.length} fields today). RI accuracy improved.`
         : "No subjective data found. Fill mood/fatigue/soreness/motivation/stress in intervals.icu wellness for better accuracy (Saw et al., 2016).",
     },
     history: results.slice(-7),

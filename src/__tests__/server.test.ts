@@ -5,8 +5,8 @@ describe("createServer", () => {
   it("returns server with expected tool and prompt counts", () => {
     const result = createServer();
     expect(result.mcpServer).toBeDefined();
-    expect(result.toolCount).toBe(54);
-    expect(result.promptCount).toBe(4);
+    expect(result.toolCount).toBe(146);
+    expect(result.promptCount).toBe(3);
   });
 
   it("version matches package.json", async () => {
@@ -17,5 +17,46 @@ describe("createServer", () => {
     const pkg = JSON.parse(await readFile(join(dir, "..", "..", "package.json"), "utf-8"));
     const { version } = createServer();
     expect(version).toBe(pkg.version);
+  });
+
+  async function connect(opts?: Parameters<typeof createServer>[0]) {
+    const { Client } = await import("@modelcontextprotocol/sdk/client/index.js");
+    const { InMemoryTransport } = await import("@modelcontextprotocol/sdk/inMemory.js");
+    const { mcpServer } = createServer(opts);
+    const [clientT, serverT] = InMemoryTransport.createLinkedPair();
+    const client = new Client({ name: "test", version: "0" });
+    await Promise.all([mcpServer.connect(serverT), client.connect(clientT)]);
+    return client;
+  }
+
+  it("annotates read-only and destructive tools", async () => {
+    const client = await connect();
+    const { tools } = await client.listTools();
+    const byName = Object.fromEntries(tools.map((t) => [t.name, t.annotations]));
+    expect(byName.get_events?.readOnlyHint).toBe(true);
+    expect(byName.delete_folder?.destructiveHint).toBe(true);
+    expect(byName.create_workout?.readOnlyHint).toBe(false);
+    expect(byName.create_workout?.destructiveHint).toBe(false);
+    expect(byName.send_chat_message?.openWorldHint).toBe(true);
+  });
+
+  it("refuses local file paths when not allowed or outside the upload dir", async () => {
+    const { mkdtemp, writeFile, symlink } = await import("node:fs/promises");
+    const { tmpdir } = await import("node:os");
+    const { join } = await import("node:path");
+    const dir = await mkdtemp(join(tmpdir(), "icu-up-"));
+    const outside = await mkdtemp(join(tmpdir(), "icu-out-"));
+    await writeFile(join(outside, "secret.env"), "KEY=1");
+    await symlink(join(outside, "secret.env"), join(dir, "evil.fit"));
+
+    const remote = await connect({ allowAnyLocalPath: false });
+    const r1 = await remote.callTool({ name: "upload_activity", arguments: { file_path: join(dir, "evil.fit") } });
+    expect(r1.isError).toBe(true);
+    expect(JSON.stringify(r1.content)).toContain("disabled");
+
+    const scoped = await connect({ allowAnyLocalPath: false, uploadDir: dir });
+    const r2 = await scoped.callTool({ name: "upload_activity", arguments: { file_path: join(dir, "evil.fit") } });
+    expect(r2.isError).toBe(true);
+    expect(JSON.stringify(r2.content)).toMatch(/Only \.fit|inside the configured upload directory/);
   });
 });

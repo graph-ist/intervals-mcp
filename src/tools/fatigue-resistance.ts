@@ -104,6 +104,9 @@ export async function computeFatigueResistance(sport?: string, curve_type?: stri
     weight_kg: mass,
     ftp,
     fatigued_curve_available: fatiguedSecs.length > 0,
+    ...(fatiguedSecs.length === 0 && {
+      hint: `No fatigued curve returned. Set the kJ threshold (after_kj0) in the ${sportType} sport settings on intervals.icu, then retry.`,
+    }),
     comparison,
     fatigue_resistance_score: frs,
     vo2max_retention_percent: vo2maxRetention,

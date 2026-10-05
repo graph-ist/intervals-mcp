@@ -58,7 +58,8 @@ export async function computeDfrc(
         pdModels.find((m) => m.type === "MORTON_3P");
 
       if (pdModel) {
-        if (!ftp) ftp = pdModel.ftp ?? pdModel.criticalPower;
+        // W'bal must pair W' with the CP it was fitted with, not with FTP
+        if (!ftp) ftp = pdModel.criticalPower ?? pdModel.ftp;
         if (!frc) frc = pdModel.wPrime;
         modelUsed = pdModel.type;
       } else {
@@ -150,6 +151,8 @@ export async function computeDfrc(
       time_below_zero_seconds: timeBelowZero,
       time_below_25pct_seconds: timeBelow25,
       avg_dfrc_pct: Math.round((sumDfrc / dfrcValues.length / frc!) * 100),
+      intervals_icu_max_wbal_depletion_joules:
+        ((activity as Record<string, unknown> | undefined)?.icu_max_wbal_depletion as number | undefined) ?? null,
     },
     chart_data: chartData,
     reference_ranges: {

@@ -1,5 +1,6 @@
 import * as icu from "../intervals.js";
 import type { Activity, WellnessDay } from "../types.js";
+import { matchesSport } from "./utils.js";
 
 /**
  * Longitudinal Trends & Heart Rate Recovery (HRR) analysis.
@@ -34,8 +35,10 @@ interface TrendResult {
   max: number;
   mean: number;
   slope_per_week: number;
+  r2: number;
   direction: "improving" | "declining" | "stable";
-  change_pct: number;
+  change_pct: number | null;
+  change_abs: number;
 }
 
 export async function computeTrends(days: number, sport: string) {
@@ -48,7 +51,7 @@ export async function computeTrends(days: number, sport: string) {
   ]);
 
   const matching = activities.filter(
-    (a) => a.type?.toLowerCase() === sport.toLowerCase() && ((a as Record<string, unknown>).moving_time as number) > 0,
+    (a) => matchesSport(a.type, sport) && ((a as Record<string, unknown>).moving_time as number) > 0,
   );
 
   if (matching.length < 3 && wellness.length < 3) {
@@ -63,8 +66,10 @@ export async function computeTrends(days: number, sport: string) {
     // EF (Efficiency Factor)
     const efPoints = extractActivityMetric(matching, baseDateMs, (a) => {
       const raw = a as Record<string, unknown>;
-      const avgP = raw.icu_average_watts as number | undefined;
-      const avgHR = raw.icu_average_hr as number | undefined;
+      const ef = raw.icu_efficiency_factor as number | undefined;
+      if (ef && ef > 0) return ef;
+      const avgP = raw.icu_weighted_avg_watts as number | undefined;
+      const avgHR = raw.average_heartrate as number | undefined;
       if (avgP && avgHR && avgHR > 0) return avgP / avgHR;
       return null;
     });
@@ -72,10 +77,10 @@ export async function computeTrends(days: number, sport: string) {
       trends.push(buildTrend("Efficiency Factor", "W/bpm", efPoints, "higher"));
     }
 
-    // HRR (Heart Rate Recovery)
+    // HRR (Heart Rate Recovery): icu_hrr is an object, the drop in bpm is its hrr field
     const hrrPoints = extractActivityMetric(matching, baseDateMs, (a) => {
       const raw = a as Record<string, unknown>;
-      const hrr = raw.icu_hrr as number | undefined;
+      const hrr = (raw.icu_hrr as { hrr?: number } | null | undefined)?.hrr;
       return hrr && hrr > 0 ? hrr : null;
     });
     if (hrrPoints.length >= 3) {
@@ -170,18 +175,18 @@ export async function computeTrends(days: number, sport: string) {
   // Summary flags
   const flags: string[] = [];
   for (const t of trends) {
-    if (t.metric === "CTL (Fitness)" && t.direction === "improving" && t.change_pct > 10) {
+    const pct = t.change_pct ?? 0;
+    if (t.metric === "CTL (Fitness)" && t.direction === "improving" && pct > 10) {
       flags.push("Fitness (CTL) trending up — good progression");
     }
-    if (t.metric === "HRV (rMSSD)" && t.direction === "declining" && t.change_pct < -15) {
+    if (t.metric === "HRV (rMSSD)" && t.direction === "declining" && pct < -15) {
       flags.push("HRV declining significantly — monitor recovery, possible overreaching");
     }
-    if (t.metric === "Resting HR" && t.direction === "declining" && t.change_pct < -5) {
+    if (t.metric === "Resting HR" && t.direction === "improving" && pct < -5) {
       flags.push("Resting HR dropping — cardiovascular fitness improving");
     }
-    if (t.metric === "Resting HR" && t.direction === "improving" && t.change_pct > 10) {
-      // "improving" here means going up for a lower-is-better metric... wait, no:
-      // For resting HR, lower is better, so "improving" = going down, "declining" = going up
+    if (t.metric === "Resting HR" && t.direction === "declining" && pct > 5) {
+      flags.push("Resting HR rising — check fatigue, illness, heat or dehydration");
     }
     if (t.metric === "Heart Rate Recovery" && t.direction === "improving") {
       flags.push("HRR improving — better parasympathetic reactivation");
@@ -189,10 +194,10 @@ export async function computeTrends(days: number, sport: string) {
     if (t.metric === "Heart Rate Recovery" && t.direction === "declining") {
       flags.push("HRR declining — possible fatigue accumulation or detraining");
     }
-    if (t.metric === "Efficiency Factor" && t.direction === "improving" && t.change_pct > 5) {
+    if (t.metric === "Efficiency Factor" && t.direction === "improving" && pct > 5) {
       flags.push("Efficiency Factor improving — aerobic base developing well");
     }
-    if (t.metric === "Decoupling" && t.direction === "improving" && t.change_pct > 10) {
+    if (t.metric === "Decoupling" && t.direction === "improving" && t.change_abs < -1) {
       flags.push("Decoupling improving — better aerobic endurance");
     }
   }
@@ -292,17 +297,25 @@ function buildTrend(
   const max = Math.max(...values);
   const mean = Math.round((values.reduce((a, b) => a + b, 0) / values.length) * 100) / 100;
 
-  const { slope } = linearRegression(points);
+  const { slope, r2 } = linearRegression(points);
   const slopePerWeek = Math.round(slope * 7 * 100) / 100;
 
   const firstValue = values[0];
   const lastValue = values[values.length - 1];
-  const changePct = firstValue !== 0 ? Math.round(((lastValue - firstValue) / Math.abs(firstValue)) * 1000) / 10 : 0;
+  // Change measured on the fitted line, not on two noisy single points
+  const xMean = points.reduce((s, p) => s + p.dayOffset, 0) / points.length;
+  const fitted = (x: number) => mean + slope * (x - xMean);
+  const fittedStart = fitted(points[0].dayOffset);
+  const fittedEnd = fitted(points[points.length - 1].dayOffset);
+  const changeAbs = Math.round((fittedEnd - fittedStart) * 100) / 100;
+  // % change is meaningless for metrics that can be zero or negative (decoupling, TSB)
+  const changePct =
+    min > 0 && fittedStart > 0 ? Math.round(((fittedEnd - fittedStart) / fittedStart) * 1000) / 10 : null;
 
-  // Determine direction relative to "better"
+  // Determine direction relative to "better"; a fit explaining <10% of variance is treated as noise
   let direction: "improving" | "declining" | "stable";
-  const threshold = mean * 0.01; // 1% of mean as stability threshold
-  if (Math.abs(slopePerWeek) < threshold) {
+  const threshold = Math.abs(mean) * 0.01; // 1% of mean per week as stability threshold
+  if (Math.abs(slopePerWeek) < threshold || r2 < 0.1) {
     direction = "stable";
   } else if (betterDirection === "neutral") {
     direction = slopePerWeek > 0 ? "improving" : "declining";
@@ -323,7 +336,9 @@ function buildTrend(
     max,
     mean,
     slope_per_week: slopePerWeek,
+    r2: Math.round(r2 * 100) / 100,
     direction,
     change_pct: changePct,
+    change_abs: changeAbs,
   };
 }

@@ -1,5 +1,22 @@
 import * as icu from "../intervals.js";
-import { extractStream } from "./utils.js";
+import { getStream } from "./utils.js";
+
+/** Coggan NP: 4th-power mean of the 30-sample rolling average (assumes ~1 Hz samples). */
+function normalizedPower(powers: number[]): number {
+  if (powers.length < 30) return powers.reduce((s, v) => s + v, 0) / Math.max(powers.length, 1);
+  let sum = 0;
+  let acc = 0;
+  let n = 0;
+  for (let i = 0; i < powers.length; i++) {
+    acc += powers[i];
+    if (i >= 30) acc -= powers[i - 30];
+    if (i >= 29) {
+      sum += (acc / 30) ** 4;
+      n++;
+    }
+  }
+  return (sum / n) ** 0.25;
+}
 
 export async function computeDecoupling(
   activity_id: string,
@@ -14,9 +31,9 @@ export async function computeDecoupling(
     icu.getActivity(activity_id),
   ]);
 
-  const timeArr = extractStream(streams?.time);
-  const powerArr = extractStream(streams?.watts);
-  const hrArr = extractStream(streams?.heartrate);
+  const timeArr = getStream(streams, "time");
+  const powerArr = getStream(streams, "watts");
+  const hrArr = getStream(streams, "heartrate");
 
   if (timeArr.length === 0 || powerArr.length === 0 || hrArr.length === 0) {
     return null; // missing streams
@@ -52,11 +69,24 @@ export async function computeDecoupling(
   const decoupling = ((h1.ef - h2.ef) / h1.ef) * 100;
 
   let assessment: string;
-  if (Math.abs(decoupling) < 3) assessment = "Excellent coupling — strong aerobic base";
-  else if (Math.abs(decoupling) < 5) assessment = "Good — aerobic base adequate";
-  else if (decoupling > 0 && decoupling < 8) assessment = "Moderate drift — aerobic base needs work";
-  else if (decoupling >= 8) assessment = "Significant drift — insufficient aerobic fitness or pacing issue";
-  else assessment = "Negative drift — unusual, check data quality or early fatigue";
+  if (decoupling <= -3)
+    assessment = "Negative drift — HR falls in 2nd half: check warm-up length, cooling or data quality";
+  else if (decoupling < 3) assessment = "Excellent coupling — strong aerobic base";
+  else if (decoupling < 5) assessment = "Good — aerobic base adequate";
+  else if (decoupling < 8) assessment = "Moderate drift — aerobic base needs work";
+  else assessment = "Significant drift — insufficient aerobic fitness, pacing, heat or dehydration";
+
+  // Pw:Hr drift is only meaningful on steady efforts long enough to show cardiac drift (Friel)
+  const powers = validPoints.map((v) => v.p);
+  const avgPower = powers.reduce((s, v) => s + v, 0) / powers.length;
+  const np = normalizedPower(powers);
+  const vi = avgPower > 0 ? np / avgPower : 1;
+  const durationMin = (validPoints[validPoints.length - 1].t - validPoints[0].t) / 60;
+  const warnings: string[] = [];
+  if (vi > 1.05)
+    warnings.push(`Variable effort (VI ${vi.toFixed(3)} > 1.050): decoupling is reliable only on steady rides`);
+  if (durationMin < 60) warnings.push(`Analysed window ${Math.round(durationMin)} min: use ≥ 60 min steady efforts`);
+  const icuDecoupling = (activity as Record<string, unknown> | undefined)?.decoupling as number | undefined;
 
   // Rolling EF for chart data (30-second windows, prefix sums + binary search)
   const efCurve: { t_min: number; ef: number; power: number; hr: number }[] = [];
@@ -105,7 +135,10 @@ export async function computeDecoupling(
     first_half: { avg_power: h1.avgP, avg_hr: h1.avgHR, efficiency_factor: Math.round(h1.ef * 1000) / 1000 },
     second_half: { avg_power: h2.avgP, avg_hr: h2.avgHR, efficiency_factor: Math.round(h2.ef * 1000) / 1000 },
     decoupling_pct: Math.round(decoupling * 100) / 100,
+    intervals_icu_decoupling_pct: icuDecoupling != null ? Math.round(icuDecoupling * 100) / 100 : null,
+    variability_index: Math.round(vi * 100) / 100,
     assessment,
+    ...(warnings.length > 0 && { warnings }),
     ef_curve: efCurve,
     reference_ranges: {
       decoupling_pct: [

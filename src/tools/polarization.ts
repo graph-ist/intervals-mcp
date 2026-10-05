@@ -1,4 +1,5 @@
 import * as icu from "../intervals.js";
+import { matchesSport } from "./utils.js";
 
 /**
  * Training Intensity Distribution & Polarization Analysis.
@@ -32,7 +33,7 @@ export async function computePolarization(days: number, sport: string) {
   // Filter by sport and only completed activities with zone data
   const matching = activities.filter(
     (a) =>
-      a.type?.toLowerCase() === sport.toLowerCase() &&
+      matchesSport(a.type, sport) &&
       !a.name?.toLowerCase().includes("manual") &&
       ((a as Record<string, unknown>).moving_time as number) > 0,
   );
@@ -41,23 +42,25 @@ export async function computePolarization(days: number, sport: string) {
     return null;
   }
 
-  // Aggregate zone seconds from activities
-  // intervals.icu stores zone seconds in fields like pace_zone_times, hr_zone_times, power_zone_times
+  // intervals.icu fields: icu_zone_times = [{id:"Z1",secs}, ..., {id:"SS",secs}], icu_hr_zone_times / pace_zone_times = number[]
   const zoneSeconds: number[] = [0, 0, 0, 0, 0, 0, 0]; // zones 1-7
 
   let usedMetric: "power" | "hr" | "pace" = "hr";
   let activitiesWithZones = 0;
+  const preferPower = matchesSport(sport, "ride");
 
   for (const act of matching) {
     const raw = act as Record<string, unknown>;
-    // Prefer power zones for cycling, HR/pace for running
     let zones: number[] | null = null;
 
-    const pzt = raw.power_zone_times as number[] | undefined;
-    const hzt = raw.hr_zone_times as number[] | undefined;
-    const pazt = raw.pace_zone_times as number[] | undefined;
+    const powerZones = raw.icu_zone_times as { id?: string; secs?: number }[] | null | undefined;
+    const pzt = powerZones?.length
+      ? [1, 2, 3, 4, 5, 6, 7].map((z) => powerZones.find((p) => p.id === `Z${z}`)?.secs ?? 0)
+      : undefined;
+    const hzt = raw.icu_hr_zone_times as number[] | null | undefined;
+    const pazt = raw.pace_zone_times as number[] | null | undefined;
 
-    if (sport.toLowerCase() === "ride" && pzt?.length) {
+    if (preferPower && pzt?.some((s) => s > 0)) {
       zones = pzt;
       usedMetric = "power";
     } else if (hzt?.length) {
@@ -91,38 +94,35 @@ export async function computePolarization(days: number, sport: string) {
     pct: Math.round((s / totalSeconds) * 1000) / 10,
   }));
 
-  // Group into intensity buckets
-  const lowIntensity = zoneSeconds[0] + zoneSeconds[1]; // Z1+Z2
-  const midIntensity = zoneSeconds[2]; // Z3
-  const highIntensity = zoneSeconds.slice(3).reduce((a, b) => a + b, 0); // Z4+
+  // Seiler 3-zone model: low = below LT1 (Z1-Z2), mid = LT1-LT2 (Z3 tempo + Z4 threshold), high = above LT2 (Z5+).
+  // Valid for Coggan 7 power zones and Friel 7 HR zones (Z5a starts at LTHR).
+  const lowIntensity = zoneSeconds[0] + zoneSeconds[1];
+  const midIntensity = zoneSeconds[2] + zoneSeconds[3];
+  const highIntensity = zoneSeconds.slice(4).reduce((a, b) => a + b, 0);
 
   const lowPct = Math.round((lowIntensity / totalSeconds) * 1000) / 10;
   const midPct = Math.round((midIntensity / totalSeconds) * 1000) / 10;
   const highPct = Math.round((highIntensity / totalSeconds) * 1000) / 10;
 
-  // Polarization Index: (Z1+Z2) / max(Z3, 1) * log2(Z4+Z5+... + 1)
-  // Higher = more polarized
-  const pi =
-    midIntensity > 0
-      ? ((lowIntensity / midIntensity) * Math.log2(1 + (highIntensity / totalSeconds) * 100)) / 5
-      : lowPct > 80
-        ? 3.0
-        : 0;
+  // Polarization Index (Treff et al. 2019): PI = log10((f1 / f2) · f3 · 100), fractions of time;
+  // f2 = 0 is replaced by 0.01, PI is undefined without high-intensity time. PI > 2.00 = polarized.
+  const f1 = lowIntensity / totalSeconds;
+  const f2 = Math.max(midIntensity / totalSeconds, 0.01);
+  const f3 = highIntensity / totalSeconds;
+  const polarizationIndex = f3 > 0 ? Math.round(Math.log10((f1 / f2) * f3 * 100) * 100) / 100 : null;
 
-  const polarizationIndex = Math.round(pi * 100) / 100;
-
-  // Determine distribution model
+  // Distribution type (Treff 2019 / Stöggl & Sperlich 2015)
   let model: string;
-  if (lowPct >= 75 && midPct <= 10 && highPct >= 10) {
-    model = "Polarized (optimal for endurance)";
-  } else if (lowPct >= 75 && midPct <= 15) {
-    model = "Mostly Polarized";
-  } else if (midPct >= 30) {
-    model = "Threshold-dominant (risk of 'black hole' training)";
-  } else if (lowPct < 60) {
-    model = "Pyramidal / High-Volume-High-Intensity";
+  if (f1 > f3 && f3 > f2 && polarizationIndex != null && polarizationIndex > 2) {
+    model = "Polarized";
+  } else if (f1 > f2 && f2 > f3) {
+    model = "Pyramidal";
+  } else if (f2 >= f1 && f2 >= f3) {
+    model = "Threshold";
+  } else if (f3 >= f1 && f3 >= f2) {
+    model = "High-intensity (HIIT)";
   } else {
-    model = "Mixed";
+    model = "Base / low-intensity dominant";
   }
 
   // Weekly average
@@ -139,21 +139,26 @@ export async function computePolarization(days: number, sport: string) {
     weekly_hours_avg: weeklyHoursAvg,
     zone_breakdown: breakdown.filter((z) => z.seconds > 0),
     intensity_distribution: {
-      low_z1_z2: { pct: lowPct, hours: Math.round((lowIntensity / 3600) * 10) / 10, target: "~80%" },
-      mid_z3: { pct: midPct, hours: Math.round((midIntensity / 3600) * 10) / 10, target: "<5-10%" },
-      high_z4_plus: { pct: highPct, hours: Math.round((highIntensity / 3600) * 10) / 10, target: "~15-20%" },
+      low_z1_z2: { pct: lowPct, hours: Math.round((lowIntensity / 3600) * 10) / 10, target: "~75-80%" },
+      mid_z3_z4: {
+        pct: midPct,
+        hours: Math.round((midIntensity / 3600) * 10) / 10,
+        target: "<10% polarized, more in pyramidal",
+      },
+      high_z5_plus: { pct: highPct, hours: Math.round((highIntensity / 3600) * 10) / 10, target: "~10-20%" },
     },
     polarization_index: polarizationIndex,
     distribution_model: model,
     recommendations: generateRecommendations(lowPct, midPct, highPct, weeklyHoursAvg),
     reference_ranges: {
       polarization_index: [
-        { range: "> 2.0", label: "Well Polarized" },
-        { range: "1.0–2.0", label: "Moderately Polarized" },
-        { range: "< 1.0", label: "Not Polarized / Threshold-heavy" },
+        { range: "> 2.00", label: "Polarized", meaning: "Z1 > Z3 > Z2 with enough high-intensity time" },
+        { range: "≤ 2.00", label: "Not polarized", meaning: "Pyramidal, threshold or base distribution" },
+        { range: "null", label: "Not computable", meaning: "No time above LT2 in the period" },
       ],
-      optimal_80_20: "Seiler (2010): ~80% Z1-Z2, ~20% Z4-Z5, minimal Z3",
-      note: "Pyramidal distribution (more Z3 than Z4+) also effective for well-trained athletes (Stöggl & Sperlich, 2015).",
+      zones_3_model:
+        "Seiler: Z1 < LT1/VT1, Z2 between LT1 and LT2, Z3 > LT2. Mapped from 7 zones as Z1-2 | Z3-4 | Z5+.",
+      note: "Pyramidal distributions are also effective, especially for amateurs and in base phases (Casado et al. 2022). PI from Treff et al. (2019).",
     },
   };
 }
@@ -163,7 +168,7 @@ function generateRecommendations(lowPct: number, midPct: number, highPct: number
 
   if (midPct > 20) {
     recs.push(
-      `Z3 is ${midPct}% of training — reduce tempo/sweetspot volume to avoid 'black hole' intensity. Replace with easy Z2 or hard Z4+ intervals.`,
+      `${midPct}% of time between LT1 and LT2 (tempo/threshold). Fine for a pyramidal block; for a polarized block move part of it to easy Z1-Z2 or to Z5+ intervals.`,
     );
   }
   if (lowPct < 70) {

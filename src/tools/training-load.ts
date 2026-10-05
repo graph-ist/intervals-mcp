@@ -35,7 +35,8 @@ export async function computeTrainingLoadRisk(days: number, daysAgo: (n: number)
     const sum = loads.reduce((s, v) => s + v, 0);
     const mean = sum / 7;
     const sd = Math.sqrt(loads.reduce((s, v) => s + (v - mean) ** 2, 0) / 7);
-    const monotony = sd > 0 ? mean / sd : 0;
+    // Identical non-zero loads every day = maximal monotony; cap instead of dividing by zero
+    const monotony = sd > 0 ? Math.min(mean / sd, 10) : mean > 0 ? 10 : 0;
     const strain = sum * monotony;
 
     let monotony_risk: string;
@@ -81,9 +82,15 @@ export async function computeTrainingLoadRisk(days: number, daysAgo: (n: number)
   if (lastWeek?.strain > 4000) flags.push(`Strain very high (${lastWeek.strain}) — cumulative overload risk`);
 
   const lastAcwr = acwrHistory[acwrHistory.length - 1];
-  if (lastAcwr?.acwr > 1.5) flags.push(`ACWR spike (${lastAcwr.acwr}) — 3-5× injury risk (Gabbett 2016)`);
-  else if (lastAcwr?.acwr > 1.3) flags.push(`ACWR elevated (${lastAcwr.acwr}) — ~2× injury risk (danger zone)`);
+  if (lastAcwr?.acwr > 1.5) flags.push(`ACWR spike (${lastAcwr.acwr}) — sharp rise in acute load (Gabbett 2016)`);
+  else if (lastAcwr?.acwr > 1.3) flags.push(`ACWR elevated (${lastAcwr.acwr}) — acute load above usual range`);
   else if (lastAcwr?.acwr < 0.8) flags.push(`ACWR low (${lastAcwr.acwr}) — detraining risk`);
+
+  // Rolling-average ACWR 7:28 (Gabbett's original definition) from daily load, alongside intervals.icu's EWMA ATL/CTL
+  const loads = dailyLoads.map((d) => d.load);
+  const acute7 = loads.length >= 7 ? loads.slice(-7).reduce((s, v) => s + v, 0) / 7 : null;
+  const chronic28 = loads.length >= 28 ? loads.slice(-28).reduce((s, v) => s + v, 0) / 28 : null;
+  const acwrRolling = acute7 != null && chronic28 ? Math.round((acute7 / chronic28) * 100) / 100 : null;
 
   if (weekly.length >= 2) {
     const prev = weekly[weekly.length - 2].weekly_load;
@@ -97,6 +104,7 @@ export async function computeTrainingLoadRisk(days: number, daysAgo: (n: number)
   return {
     today: {
       acwr: lastAcwr,
+      acwr_rolling_7_28: acwrRolling,
       monotony: lastWeek,
       flags: flags.length > 0 ? flags : ["No risk flags — training load looks balanced"],
     },
@@ -118,10 +126,12 @@ export async function computeTrainingLoadRisk(days: number, daysAgo: (n: number)
         {
           range: "1.30–1.50",
           label: "Danger zone",
-          meaning: "Carico acuto elevato vs cronico — ~2× rischio infortunio",
+          meaning: "Carico acuto elevato rispetto al cronico — associato a più infortuni negli sport di squadra",
         },
-        { range: "> 1.50", label: "Spike", meaning: "Incremento brusco — 3-5× rischio infortunio, ridurre subito" },
+        { range: "> 1.50", label: "Spike", meaning: "Incremento brusco — ridurre e consolidare" },
       ],
+      acwr_note:
+        "acwr usa ATL/CTL EWMA di intervals.icu (7/42 giorni); acwr_rolling_7_28 è la definizione originale di Gabbett. Le soglie vengono da sport di squadra e il valore predittivo dell'ACWR è contestato (Impellizzeri et al. 2020): usarlo come indicatore di tendenza, non come probabilità di infortunio.",
       monotony: [
         { range: "< 1.5", label: "Bassa", meaning: "Buona variazione del carico giorno per giorno" },
         { range: "1.5–2.0", label: "Moderata", meaning: "Carico abbastanza uniforme — attenzione" },

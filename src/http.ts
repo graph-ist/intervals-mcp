@@ -20,10 +20,18 @@ if (!mcpAuthToken) {
   process.exit(1);
 }
 
+if (mcpAuthToken.length < 32) {
+  console.warn("MCP_AUTH_TOKEN is shorter than 32 characters: generate a stronger one with `openssl rand -hex 32`");
+}
+
 icu.configure(apiKey, athleteId);
 
+// Remote clients cannot read the server's disk: local paths are allowed only inside UPLOAD_DIR
+const serverOptions = { allowAnyLocalPath: false, uploadDir: process.env.UPLOAD_DIR };
+
 const app = express();
-app.use(express.json());
+// Base64 activity files (up to 25 MB raw) travel inside the JSON-RPC body
+app.use(express.json({ limit: "40mb" }));
 
 // Richiede il token in "Authorization: Bearer <MCP_AUTH_TOKEN>" oppure come
 // query param "?token=<MCP_AUTH_TOKEN>" su /mcp. Il server è esposto
@@ -113,7 +121,7 @@ app.post("/mcp", async (req, res) => {
     }
   };
 
-  const { mcpServer } = createServer();
+  const { mcpServer } = createServer(serverOptions);
   await mcpServer.connect(transport);
   await transport.handleRequest(req, res, req.body);
 });
@@ -142,7 +150,7 @@ app.delete("/mcp", async (req, res) => {
 });
 
 // Health check (Render pings / by default)
-const { toolCount, promptCount, version } = createServer();
+const { toolCount, promptCount, version } = createServer(serverOptions);
 
 app.get("/", (_req, res) => {
   res.json({ status: "ok", version, tools: toolCount, prompts: promptCount, sessions: transports.size });
