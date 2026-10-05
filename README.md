@@ -3,7 +3,7 @@
 [![CI](https://github.com/graph-ist/intervals-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/graph-ist/intervals-mcp/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-MCP server for [intervals.icu](https://intervals.icu). It exposes 146 tools covering the whole documented public API (except the OAuth-only `disconnect-app` endpoint), including nine analysis tools, and three prompts.
+MCP server for [intervals.icu](https://intervals.icu). It exposes 146 tools covering the whole documented public API (except the OAuth-only `disconnect-app` endpoint), including nine analysis tools, and four prompts.
 
 Two transports are provided: stdio for local clients such as Claude Desktop, and Streamable HTTP for remote clients such as claude.ai custom connectors.
 
@@ -262,7 +262,7 @@ Subjective scales use 1 to 4, where 1 is the best value. They must be enabled in
 | `mark_chat_seen` / `block_chat` | Mark as read, block or unblock a private chat |
 | `list_activity_messages` / `add_activity_message` | Comments on an activity |
 
-## Prompts (3)
+## Prompts (4)
 
 Available through the prompt picker in claude.ai and Claude Desktop.
 
@@ -271,6 +271,7 @@ Available through the prompt picker in claude.ai and Claude Desktop.
 | `morning_check` | Morning | Red-flag scan: decides whether anything justifies deviating from the weekly plan. A recovery index between 55 and 80 without anomalies means executing the plan |
 | `weekly_review` | Sunday evening | Primary decision tool: review of the past week and planning of the next one, with explicit exception criteria |
 | `activity_review` | After a session | Finds the latest Ride, Run or Swim and analyses metrics, zones, pacing, decoupling and dFRC |
+| `weekly_load_tracker` | Any time | Calls `get_weekly_load_tracker` for the next 6 weeks and draws one bar per week, filled day by day with the TSS done per sport against the target. Asks for missing weekly targets instead of inventing them |
 
 The prompt texts are written in Italian.
 
@@ -296,7 +297,7 @@ src/
 ├── types.ts            # response types
 ├── mcp/
 │   ├── helpers.ts      # shared zod schemas, result helpers, date helpers, ServerOptions
-│   ├── prompts.ts      # the three prompts
+│   ├── prompts.ts      # the prompts
 │   └── tools/          # tool registration, one module per domain
 │       ├── athlete.ts      activities.ts   curves.ts     analysis.ts
 │       ├── wellness.ts     events.ts       workouts.ts   files.ts

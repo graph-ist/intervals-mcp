@@ -98,4 +98,27 @@ ${PROMPT_SUFFIX}`,
       ],
     }),
   );
+
+  server.prompt(
+    "weekly_load_tracker",
+    "Tracker TSS: una barra per settimana che si riempie ogni giorno con il carico svolto (nuoto, bici, corsa, palestra) rispetto al target",
+    async () => ({
+      messages: [
+        {
+          role: "user" as const,
+          content: {
+            type: "text" as const,
+            text: `Tracker del carico settimanale (TSS), oggi è ${today()}.
+
+1. Chiama get_weekly_load_tracker con weeks=6.
+2. Se la risposta contiene un hint (settimane senza target), non inventare i valori: mostra comunque il grafico con i target disponibili e chiedimi i TSS settimanali mancanti, oppure proponimi una progressione ragionevole a partire dal CTL attuale (get_athlete) da approvare prima di usarla.
+3. Disegna il grafico: una barra orizzontale per settimana, lunghezza proporzionale al target_tss e riempita a segmenti colorati con actual_tss_by_sport (nuoto, bici, corsa, palestra), con legenda dei colori. Segna il target al 100%, scrivi il completamento in % e i TSS fatti su target. Evidenzia la settimana corrente e, per quella, aggiungi sotto la barra il profilo giornaliero (cumulative_tss) e i TSS al giorno che servono per chiuderla (tss_per_day_needed).
+4. Sotto il grafico, al massimo tre righe: stato della settimana corrente rispetto ai giorni trascorsi, eventuali settimane senza target, e l'attività non conteggiata (yoga, pilates) solo se rilevante.
+
+Non fare valutazioni di rischio o consigli di allenamento: questo è un tracker, non un'analisi. Non usare il recovery index. No emoji.`,
+          },
+        },
+      ],
+    }),
+  );
 }
