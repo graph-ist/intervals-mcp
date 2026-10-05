@@ -240,10 +240,12 @@ export async function computeRecoveryIndex(days: number, daysAgo: (n: number) =>
         { range: "< 6h", label: "Critico", meaning: "Impatto severo su performance, reazione, immunità" },
       ],
       baevsky_si: [
-        { range: "< 50", label: "Basso", meaning: "Dominanza parasimpatica, buon recupero" },
-        { range: "50–150", label: "Normale", meaning: "Equilibrio autonomico" },
-        { range: "150–500", label: "Elevato", meaning: "Attivazione simpatica — stress, fatica o malattia" },
-        { range: "> 500", label: "Molto elevato", meaning: "Stress autonomico severo" },
+        {
+          range: "scala del dispositivo",
+          label: "Valori assoluti non confrontabili",
+          meaning:
+            "Il Baevsky SI classico (50-500) dipende dall'algoritmo del dispositivo: alcune fonti riportano valori su scala ridotta (es. 2-10). Non usare soglie assolute: leggere z-score e trend rispetto alla propria baseline (z < -1.5 = stress simpatico sopra il solito).",
+        },
       ],
       spo2: [
         { range: "97–100%", label: "Normale", meaning: "Saturazione ottimale" },

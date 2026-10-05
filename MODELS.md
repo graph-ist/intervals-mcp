@@ -248,7 +248,7 @@ Indice composito di recovery basato su **z-score individuali** delle metriche fi
 | Avg Sleeping HR | `avgSleepingHR` | ↓ = meglio | 2 | Più stabile di resting HR mattutino |
 | Sleep Duration | `sleepSecs` | ↑ = meglio | 2 | Effetto dose-risposta su recovery (Mah et al., 2011) |
 | Sleep Score | `sleepScore` | ↑ = meglio | 2 | Composito device (durata + stadi + disturbances) |
-| Baevsky Stress Index | `baevskySI` | ↓ = meglio | 2 | Attivazione simpatica (Baevsky & Berseneva, 2008) |
+| Baevsky Stress Index | `baevskySI` | ↓ = meglio | 2 | Attivazione simpatica (Baevsky & Berseneva, 2008). **Solo z-score vs baseline personale**: la scala assoluta dipende dal dispositivo (nei dati verificati 2.5–8, non 50–500) |
 | SpO₂ | `spO2` | ↑ = meglio | 1 | Flag overtraining/altitudine |
 | Respiratory Rate | `respiration` | ↓ = meglio | 1 | Elevata con stress/fatica (Nicolò et al., 2020) |
 
@@ -345,7 +345,7 @@ $$
 | **Plews et al. (2013)**. *Training adaptation and heart rate variability in elite endurance athletes: opening the door to effective monitoring.* Sports Med, 43(9), 773–781. | **Approccio adottato.** L'HRV va interpretato come deviazione dalla baseline individuale, non come valore assoluto. La media rolling e il coefficiente di variazione (CV) dell'HRV predicono overreaching. |
 | **Plews et al. (2012)**. *Heart rate variability in elite triathletes, is variation in variability the key to effective training?* Int J Sports Physiol Perform, 7(4), 394–400. | Un aumento del CV dell'HRV (maggiore variabilità giorno-giorno) è marker di affaticamento cumulativo, non solo il calo della media. |
 | **Buchheit (2014)**. *Monitoring training status with HR measures: do all roads lead to Rome?* Front Physiol, 5, 73. | Review: resting HR, HRV, HR recovery sono marker complementari. Resting HR è meno sensibile di HRV ma più robusto. Approccio multi-metrica preferibile. |
-| **Baevsky & Berseneva (2008)**. *Methodical recommendations: use of kardivar system for determination of the stress level.* Moscow: IBMP. | Baevsky Stress Index (SI) = integrale di tensione calcolato da distribuzione RR. SI > 150 = stress simpatico elevato. Usato in medicina spaziale russa e ora in dispositivi consumer. |
+| **Baevsky & Berseneva (2008)**. *Methodical recommendations: use of kardivar system for determination of the stress level.* Moscow: IBMP. | Baevsky Stress Index (SI) = integrale di tensione calcolato da distribuzione RR. Nella formulazione classica SI > 150 = stress simpatico elevato, ma i dispositivi consumer lo riportano su scale diverse: il tool non applica soglie assolute. |
 | **Nicolò et al. (2020)**. *Respiratory frequency as a marker of physical effort during high-intensity interval training.* Front Physiol, 11, 575. | La frequenza respiratoria a riposo è marker di stress autonomico. Elevata con fatica residua e attivazione simpatica cronica. |
 | **Mah et al. (2011)**. *The effects of sleep extension on the athletic performance of collegiate basketball players.* Sleep, 34(7), 943–950. | Effetto dose-risposta: estendere il sonno migliora performance e tempi di reazione. La deprivazione cronica (< 7h) compromette recovery e adattamento. |
 | **Saw et al. (2016)**. *Monitoring the athlete training response: subjective self-reported measures trump commonly used objective measures.* Br J Sports Med, 50(5), 281–291. | Review sistematica: misure soggettive (mood, fatigue, soreness) sono più sensibili a cambiamenti di training load rispetto a misure oggettive singole. L'approccio combinato è ottimale. |
