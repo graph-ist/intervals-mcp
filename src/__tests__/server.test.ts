@@ -5,7 +5,7 @@ describe("createServer", () => {
   it("returns server with expected tool and prompt counts", () => {
     const result = createServer();
     expect(result.mcpServer).toBeDefined();
-    expect(result.toolCount).toBe(146);
+    expect(result.toolCount).toBe(145);
     expect(result.promptCount).toBe(3);
   });
 
@@ -58,5 +58,15 @@ describe("createServer", () => {
     const r2 = await scoped.callTool({ name: "upload_activity", arguments: { file_path: join(dir, "evil.fit") } });
     expect(r2.isError).toBe(true);
     expect(JSON.stringify(r2.content)).toMatch(/Only \.fit|inside the configured upload directory/);
+  });
+
+  it("serves prompts when the client sends no arguments", async () => {
+    const client = await connect();
+    const { prompts } = await client.listPrompts();
+    expect(prompts.map((p) => p.name).sort()).toEqual(["activity_review", "morning_check", "weekly_review"]);
+    for (const { name } of prompts) {
+      const res = await client.getPrompt({ name });
+      expect(res.messages.length).toBeGreaterThan(0);
+    }
   });
 });

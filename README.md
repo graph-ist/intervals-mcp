@@ -3,476 +3,348 @@
 [![CI](https://github.com/graph-ist/intervals-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/graph-ist/intervals-mcp/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-MCP server per [intervals.icu](https://intervals.icu) — 146 tool che coprono tutta l'API pubblica documentata (tranne l'endpoint solo OAuth `disconnect-app`).
+MCP server for [intervals.icu](https://intervals.icu). It exposes 145 tools covering the whole documented public API (except the OAuth-only `disconnect-app` endpoint), including eight physiological analysis tools, and three prompts.
 
-## Setup
+Two transports are provided: stdio for local clients such as Claude Desktop, and Streamable HTTP for remote clients such as claude.ai custom connectors.
+
+## Quick start
 
 ```bash
 npm install
 npm run build
+cp .env.example .env   # then add your intervals.icu API key (Settings → Developer)
 ```
 
-Crea il file `.env`:
+### Claude Desktop (stdio)
 
-```bash
-cp .env.example .env
-```
-
-Inserisci la tua API key di intervals.icu (Settings → Developer).
-
-## Development
-
-```bash
-npm run build       # Compila TypeScript
-npm test            # Esegui test (vitest)
-npm run test:watch  # Test in watch mode
-npm run lint        # Lint con Biome
-npm run lint:fix    # Lint + fix automatico
-npm run check       # Build + lint + test (tutto)
-```
-
-### Struttura del progetto
-
-```
-src/
-├── server.ts           # MCP server: 146 tool, 3 prompt
-├── intervals.ts        # Client HTTP per intervals.icu API
-├── types.ts            # Tipi TypeScript per le risposte API
-├── http.ts             # Transport HTTP/Express (remote)
-├── stdio.ts            # Transport stdio (Claude Desktop)
-└── tools/
-    ├── decoupling.ts       # Decoupling aerobico Pw:Hr
-    ├── dfa-alpha1.ts       # DFA α1 threshold detection
-    ├── dfrc.ts             # dFRC / W'bal (Skiba)
-    ├── fatigue-resistance.ts # Durability: fresh vs fatigued power curves
-    ├── metabolic.ts        # Profilo metabolico (VLaMax, Coggan)
-    ├── polarization.ts     # Distribuzione intensità e polarizzazione
-    ├── recovery.ts         # Indice di recupero composito (+ soggettivo)
-    ├── training-load.ts    # Rischio carico (Monotony, ACWR)
-    ├── trends.ts           # Trend longitudinali + HRR
-    ├── utils.ts            # Utility condivise (extractStream)
-    └── __tests__/
-        └── tools.test.ts
-```
-
-## Uso da smartphone/tablet (Raspberry Pi + Cloudflare Tunnel)
-
-Deploy su Raspberry Pi con Cloudflare Quick Tunnel per accesso da qualsiasi dispositivo, sempre acceso, zero cold start.
-
-### Requisiti
-
-- Raspberry Pi (testato su Pi 8GB) con Raspberry Pi OS Lite 64-bit
-- SSH abilitato (username `pi`, hostname `intervals-pi`)
-- Stessa rete WiFi del Mac per il setup iniziale
-
-### Setup sul Pi
-
-```bash
-# Dal Mac: connettiti al Pi
-ssh pi@intervals-pi.local
-
-# Sul Pi: installa Node.js 22
-curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash -
-sudo apt-get install -y nodejs git
-
-# Opzione A: clona da GitHub (serve deploy key per repo privato)
-git clone git@github.com:graph-ist/intervals-mcp.git ~/intervals-mcp
-
-# Opzione B: copia dal Mac con SCP
-# Dal Mac: scp -r src/ package.json package-lock.json tsconfig.json pi@intervals-pi.local:~/intervals-mcp/
-
-# Build
-cd ~/intervals-mcp && npm ci && npm run build
-
-# Crea .env
-cat > .env << EOF
-INTERVALS_API_KEY=la_tua_api_key
-INTERVALS_ATHLETE_ID=il_tuo_athlete_id
-MCP_AUTH_TOKEN=$(openssl rand -hex 32)
-PORT=3001
-EOF
-chmod 600 .env
-```
-
-### Servizi systemd
-
-```bash
-# intervals-mcp server
-sudo tee /etc/systemd/system/intervals-mcp.service > /dev/null << 'EOF'
-[Unit]
-Description=intervals-mcp MCP server
-After=network-online.target
-Wants=network-online.target
-[Service]
-Type=simple
-User=pi
-WorkingDirectory=/home/pi/intervals-mcp
-EnvironmentFile=/home/pi/intervals-mcp/.env
-ExecStart=/usr/bin/node /home/pi/intervals-mcp/dist/http.js
-Restart=always
-RestartSec=5
-[Install]
-WantedBy=multi-user.target
-EOF
-
-# Cloudflare Quick Tunnel
-sudo apt-get install -y curl
-curl -L https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-arm64.deb -o /tmp/cloudflared.deb
-sudo dpkg -i /tmp/cloudflared.deb
-
-sudo tee /etc/systemd/system/cloudflared.service > /dev/null << 'EOF'
-[Unit]
-Description=Cloudflare Quick Tunnel for intervals-mcp
-After=intervals-mcp.service
-Requires=intervals-mcp.service
-[Service]
-Type=simple
-User=pi
-ExecStart=/usr/bin/cloudflared tunnel --url http://localhost:3001 --no-autoupdate
-Restart=always
-RestartSec=5
-[Install]
-WantedBy=multi-user.target
-EOF
-
-# Avvia tutto
-sudo systemctl daemon-reload
-sudo systemctl enable intervals-mcp cloudflared
-sudo systemctl start intervals-mcp cloudflared
-```
-
-### Recuperare l'URL del tunnel
-
-Il Quick Tunnel genera un URL casuale ad ogni avvio (es. `https://xxx-yyy-zzz.trycloudflare.com`). Per recuperarlo:
-
-```bash
-ssh pi@intervals-pi.local "sudo journalctl -u cloudflared -n 20 --no-pager | grep trycloudflare"
-```
-
-L'URL resta stabile finché il Pi è acceso. Cambia solo dopo un riavvio.
-
-### Connetti a claude.ai
-
-Vai su **claude.ai → Settings → Connectors → Add custom connector** e incolla l'URL del tunnel + `/mcp?token=` seguito dal valore di `MCP_AUTH_TOKEN` (i connector custom non permettono header personalizzati):
-
-```
-https://xxx-yyy-zzz.trycloudflare.com/mcp?token=IL_TUO_MCP_AUTH_TOKEN
-```
-
-Tratta questo URL come una password: chi lo conosce ha accesso in lettura e scrittura al tuo account intervals.icu.
-
-### Aggiornare (dal Mac)
-
-```bash
-# Una tantum: accesso con chiave SSH invece della password
-ssh-copy-id pi@intervals-pi.local
-
-npm run build
-scp -r src/ package.json package-lock.json tsconfig.json pi@intervals-pi.local:~/intervals-mcp/
-ssh pi@intervals-pi.local "cd ~/intervals-mcp && npm ci && npm run build && sudo systemctl restart intervals-mcp"
-```
-
-L'URL del tunnel non cambia con un deploy — solo `intervals-mcp` viene riavviato.
-
-In alternativa, se sul Pi c'è il clone git, basta lanciare sul Pi (via SSH o Tailscale):
-
-```bash
-bash ~/intervals-mcp/pi/update.sh
-```
-
-Lo script fa `git pull`, `npm ci`, build e riavvio del servizio, poi verifica: health check, rifiuto delle richieste senza token, `tools/list` e 4 chiamate reali via MCP.
-
-### Comandi utili
-
-| Cosa | Comando |
-|---|---|
-| Stato server | `sudo systemctl status intervals-mcp` |
-| Stato tunnel | `sudo systemctl status cloudflared` |
-| URL tunnel | `sudo journalctl -u cloudflared --no-pager \| grep trycloudflare` |
-| Riavviare server | `sudo systemctl restart intervals-mcp` |
-| Spegnere Pi | `sudo shutdown now` |
-| Riavviare Pi | `sudo reboot` |
-
-### Alternativa: Render (cloud, con cold start)
-
-Se non hai un Pi, puoi usare Render (free tier). Vedi [Dockerfile](Dockerfile) e [render.yaml](render.yaml). Nota: il free tier si spegne dopo 15 min di inattivita, la prima richiesta impiega ~30s.
-
-## Uso con Claude Desktop (Mac)
-
-Aggiungi al file `~/Library/Application Support/Claude/claude_desktop_config.json`:
+Add the server to `~/Library/Application Support/Claude/claude_desktop_config.json`:
 
 ```json
 {
   "mcpServers": {
     "intervals": {
       "command": "node",
-      "args": ["/PERCORSO/COMPLETO/intervals-mcp/dist/stdio.js"],
+      "args": ["/ABSOLUTE/PATH/TO/intervals-mcp/dist/stdio.js"],
       "env": {
-        "INTERVALS_API_KEY": "la_tua_api_key",
-        "INTERVALS_ATHLETE_ID": "il_tuo_athlete_id"
+        "INTERVALS_API_KEY": "your_api_key",
+        "INTERVALS_ATHLETE_ID": "your_athlete_id"
       }
     }
   }
 }
 ```
 
-Sostituisci `/PERCORSO/COMPLETO/` con il path reale (es. `/Users/tuonome/Documents/GitHub/intervals-mcp`).
+Restart Claude Desktop afterwards.
 
-Riavvia Claude Desktop.
-
-## Uso con claude.ai (Integrations — remote)
-
-Se hai deployato su Render (vedi sopra), il server è già accessibile. Per test locale:
+### Remote (Streamable HTTP)
 
 ```bash
 INTERVALS_API_KEY=xxx INTERVALS_ATHLETE_ID=yyy MCP_AUTH_TOKEN=$(openssl rand -hex 32) npm run serve
 ```
 
-Il server parte su `http://localhost:3001/mcp`.
+The server listens on `http://localhost:3001/mcp`. `/` and `/health` are unauthenticated; `/mcp` requires the token, sent either as `Authorization: Bearer <token>` or as a `?token=` query parameter. The query parameter exists because claude.ai custom connectors cannot send custom headers, so the connector URL has the form:
 
-Per usarlo con claude.ai Integrations serve un URL pubblico HTTPS — usa il deploy Render o ngrok per test locale.
+```
+https://your-host.example/mcp?token=YOUR_MCP_AUTH_TOKEN
+```
 
-## Modelli matematici
+Treat that URL as a password: whoever holds it can read and write your intervals.icu account.
 
-I tool custom `get_activity_dfrc`, `get_metabolic_profile`, `get_recovery_index`, `get_training_load_risk`, `get_aerobic_decoupling`, `get_fatigue_resistance`, `get_dfa_alpha1`, `get_polarization_analysis` e `get_longitudinal_trends` implementano modelli fisiologici con scelte specifiche di costanti e formulazioni. Tutta la documentazione matematica, i riferimenti alla letteratura e il confronto critico con le implementazioni commerciali (INSCYD, WKO5) sono in **[MODELS.md](MODELS.md)**.
+## Deployment
 
-## Tool disponibili (146)
+The server is a plain Node.js 22 process. A public HTTPS endpoint is needed only when it is used from claude.ai or a phone.
 
-### 👤 Atleta e impostazioni
+- **Docker**: see the [Dockerfile](Dockerfile). The image runs `node dist/http.js` as a non-root user on port 3001 and has a health check on `/health`.
+- **Render**: see [render.yaml](render.yaml). The free tier sleeps after 15 minutes of inactivity, so the first request takes about 30 seconds. Set `MCP_AUTH_TOKEN` in the service environment.
+- **Raspberry Pi**: provisioning, systemd units, firewall and the public tunnel are not part of this repository. They live in the separate `aegis-infra` repository, which treats this server as one of the services running on the device.
 
-| Tool | Descrizione |
-|---|---|
-| `get_athlete` | Profilo atleta, fitness attuale (CTL/ATL/TSB) |
-| `get_sport_settings` | Zone, FTP, soglia, FC max |
-| `update_sport_settings` | Aggiorna impostazioni sport (FTP, LTHR, zone, W', ecc.) |
-| `apply_sport_settings` | Applica le impostazioni (zone, soglie) alle attività passate e ricalcola |
-| `create_sport_settings` | Crea le impostazioni per uno sport che non ne ha |
-| `update_athlete` | Aggiorna il profilo atleta (peso, FC riposo, data di nascita, fuso orario) |
-| `list_athletes` | Atleti seguiti o allenati (richiede API key) |
-| `update_sport_settings_bulk` | Aggiorna le impostazioni di più sport insieme |
-| `delete_sport_settings` | Elimina le impostazioni di uno sport |
-| `get_matching_activities` | Attività che corrispondono a un'impostazione sport |
-| `get_athlete_profile` | Profilo pubblico (bio, cartelle condivise, custom item) |
-| `get_athlete_connections` | Dispositivi e piattaforme collegati |
-| `get_athlete_settings` | Impostazioni interfaccia per phone, tablet o desktop |
-| `get_weather_config` / `update_weather_config` | Località delle previsioni meteo |
-| `update_athlete_plans` | Coach: cambia il piano a più atleti insieme |
+## Environment variables
 
-### 🏊‍♂️ Attività
-
-| Tool | Descrizione |
-|---|---|
-| `get_recent_activities` | Attività recenti |
-| `search_activities` | Cerca attività per testo |
-| `get_activity_detail` | Dettagli completi di un'attività |
-| `get_activity_streams` | Dati time-series (potenza, HR, passo, ecc.) |
-| `upload_activity` | Upload file attività (FIT, TCX, GPX) |
-| `update_activity` | Modifica metadati di un'attività (nome, tipo, descrizione, ecc.) |
-| `delete_activity` | Elimina un'attività |
-| `get_activity_intervals` | Intervalli strutturati di un'attività |
-| `update_activity_intervals` | Aggiorna/sostituisce intervalli manuali |
-| `get_activity_best_efforts` | Migliori sforzi per durata/distanza |
-| `search_intervals` | Cerca intervalli per durata/intensità |
-| `create_manual_activity` | Crea attività manuale (ore, TSS, ecc.) |
-| `get_activity_tags` | Lista tag attività disponibili |
-| `get_activity_interval_stats` | Statistiche (potenza, FC, NP, ecc.) su un tratto arbitrario dell'attività per indice stream |
-| `get_activities_by_ids` | Più attività per ID in una chiamata |
-| `get_activities_around` | Attività prima e dopo un'attività data |
-| `update_activity_streams` | Corregge gli stream (potenza, FC) di un'attività |
-| `update_activity_interval` | Aggiorna o crea un singolo intervallo |
-| `delete_activity_intervals` | Elimina intervalli da un'attività |
-| `create_manual_activities_bulk` | Crea più attività manuali (upsert su `external_id`) |
-| `search_activities_full` | Ricerca per nome o tag che restituisce attività complete |
-| `download_activity_file` | Scarica file originale, fit o gpx di un'attività (max ~1.5 MB) |
-| `export_csv` | Esporta in CSV attività, wellness, gear, eventi, curve atleta e dati di una singola attività |
-| `list_activity_messages` / `add_activity_message` | Commenti su un'attività |
-| `upload_activity_streams_csv` | Aggiorna gli stream di un'attività da CSV |
-| `split_activity_interval` | Divide un intervallo in due |
-| `download_activity_fit_files` | Zip dei fit generati per più attività |
-| `delete_activity_tombstone` | Permette di ricaricare un'attività cancellata |
-
-### 📈 Curve e analisi attività
-
-| Tool | Descrizione |
-|---|---|
-| `get_activity_power_curve` | Power curve di un'attività |
-| `get_activity_pace_curve` | Pace curve di un'attività |
-| `get_activity_hr_curve` | HR curve di un'attività |
-| `get_activity_power_vs_hr` | Power vs HR raw scatter (efficienza aerobica) |
-| `get_aerobic_decoupling` | Decoupling Pw:Hr: drift % 1ª vs 2ª metà, EF curve, assessment |
-| `get_activity_dfrc` | dFRC/W'bal di un'attività (modello Skiba) |
-| `get_activity_power_histogram` | Distribuzione potenza a barre |
-| `get_activity_histogram` | Distribuzione FC, passo o passo corretto per pendenza |
-| `get_activity_time_at_hr` | Tempo trascorso a ogni valore di FC |
-| `get_activity_segments` | Segmenti riconosciuti nell'attività |
-| `get_activity_model` | Modello di carico da FC o rilevamento picchi di potenza |
-| `get_activity_power_curves` | Power curve multi-stream e fresche/affaticate in una chiamata |
-| `get_activity_map` | Dati mappa/GPS |
-| `get_activity_weather` | Condizioni meteo durante l'attività |
-
-### 📊 Curve e profilo fisiologico
-
-| Tool | Descrizione |
-|---|---|
-| `get_power_curves` | Power curve (stagione, recenti, fatigued) |
-| `get_pace_curves` | Pace curve |
-| `get_hr_curves` | HR curve |
-| `get_power_hr_curve` | Trend efficienza aerobica |
-| `get_metabolic_profile` | Profilo metabolico: VLaMax (Mader), energy breakdown, Coggan power profile, FRI |
-| `get_mmp_model` | Modello MMP (CP, W', pMax) |
-| `get_activity_power_curves_range` | Power curve per periodo (confronto attività) |
-| `get_activity_pace_curves_range` | Miglior passo per distanza, per periodo |
-| `get_activity_hr_curves_range` | Miglior FC per durata, per periodo |
-| `get_pace_distances` | Distanze usate per le pace curve |
-
-### 🔬 Analisi scientifiche avanzate
-
-| Tool | Descrizione |
-|---|---|
-| `get_fatigue_resistance` | **Durability**: confronta power curve fresche vs affaticate. Fatigue Resistance Score, ritenzione VO₂max. Basato su Maunder et al. (2021) |
-| `get_dfa_alpha1` | **DFA α1**: soglie aerobica (α1=0.75) e anaerobica (α1=0.50) da dati beat-to-beat. Richiede fascia toracica compatibile. Rogers et al. (2021) |
-| `get_polarization_analysis` | **Polarizzazione**: distribuzione tempo nelle zone, indice di polarizzazione, confronto con modello 80/20. Seiler (2010), Stöggl & Sperlich (2015) |
-| `get_longitudinal_trends` | **Trend longitudinali**: regressione lineare su EF, potenza, HRR, decoupling, CTL, HRV, FC riposo, peso, sonno. Segnala progressioni e sovraffaticamento |
-
-### 💚 Wellness e fitness
-
-| Tool | Descrizione |
-|---|---|
-| `get_wellness_data` | Wellness: CTL, ATL, TSB, HRV, sonno, umore |
-| `update_wellness` | Aggiorna dati wellness per data (peso, HRV, sonno, umore) |
-| `update_wellness_bulk` | Aggiorna più giorni di wellness in una chiamata |
-| `get_wellness_day` | Wellness di un singolo giorno |
-| `upload_wellness_csv` | Importa wellness da testo CSV |
-| `get_recovery_index` | **Stato di recupero**: indice composito 0-100 da HRV, FC riposo, sonno, Baevsky SI, SpO₂, respirazione + dati soggettivi (umore, motivazione, fatica, dolori, stress, infortuni). Baseline individuale (z-score 30gg). → "Come stai oggi? Puoi allenarti forte?" |
-| `get_training_load_risk` | **Rischio da carico**: Monotony, Strain (Foster 1998), ACWR (Gabbett 2016), spike di volume. → "Stai aumentando troppo in fretta?" |
-| `get_fitness_summary` | **Volume e carico totali**: ore, km, TSS e numero attività per sport in un periodo |
-| `get_weather_forecast` | Previsioni meteo per la tua posizione |
-| `get_fitness_model_events` | Eventi del modello fitness (CTL/ATL/TSB) |
-
-### 📅 Calendario e pianificazione
-
-| Tool | Descrizione |
-|---|---|
-| `get_events` | Eventi calendario (workout, gare, note) con filtro categoria |
-| `get_event` | Un singolo evento per ID |
-| `delete_events_range` | Elimina tutti gli eventi di un intervallo di date |
-| `apply_plan` | Applica un piano della libreria al calendario da una data |
-| `apply_plan_changes` | Propaga al calendario le modifiche del piano attivo |
-| `update_training_plan` | Cambia il piano assegnato all'atleta |
-| `update_events_range` | Nasconde o blocca gli eventi di un intervallo (funzione coach) |
-| `list_tags` | Tag usati su eventi o workout della libreria |
-| `download_workouts_zip` | Scarica i workout di un intervallo in uno zip (zwo, mrc, erg, fit) |
-| `create_training_plan` | Crea piano allenamento in batch sul calendario (singola chiamata bulk) |
-| `update_event` | Modifica un evento esistente sul calendario |
-| `mark_event_done` | Segna un workout pianificato come eseguito (crea attività manuale) |
-| `download_event_workout` | Esporta un workout pianificato in zwo, mrc, erg o fit |
-| `delete_event` | Elimina un evento dal calendario |
-| `duplicate_events` | Duplica eventi (ripeti blocchi settimanali) |
-| `bulk_delete_events` | Elimina eventi in batch |
-| `get_folders` | Cartelle libreria workout e piani |
-| `get_training_plan` | Dettagli piano allenamento attivo |
-| `get_workouts` | Libreria workout salvati |
-| `get_workout` | Dettaglio di un workout della libreria |
-| `create_workout` | Crea un workout nella libreria |
-| `create_workouts_bulk` | Crea più workout nella libreria in una chiamata |
-| `update_workout` | Modifica un workout della libreria |
-| `delete_workout` | Elimina un workout dalla libreria |
-| `create_folder` | Crea una cartella o un piano nella libreria |
-| `update_folder` | Modifica una cartella o un piano |
-| `delete_folder` | Elimina una cartella o un piano con tutti i suoi workout |
-| `duplicate_workouts` | Duplica workout su un piano |
-| `convert_workout` | Converte un workout della libreria in zwo, mrc, erg o fit |
-| `import_workout_file` | Importa un file zwo, mrc, erg o fit in una cartella |
-| `update_plan_workouts` | Nasconde o mostra all'atleta un intervallo di workout di un piano |
-| `get_folder_shared_with` / `update_folder_shared_with` | Condivisione di cartelle e piani con altri atleti |
-| `recalculate_gear_stats` | Ricalcola km, ore e attività di un'attrezzatura |
-| `get_gear` | Lista attrezzatura (bici, scarpe, ecc.) con km e manutenzione |
-| `create_gear` / `update_gear` / `delete_gear` | Gestione attrezzatura e componenti |
-| `replace_gear` | Ritira un componente e lo sostituisce mantenendo i promemoria |
-| `create_gear_reminder` / `update_gear_reminder` / `delete_gear_reminder` | Promemoria di manutenzione (reset e snooze inclusi) |
-
-### 🎨 Visualizzazione
-
-| Tool | Descrizione |
-|---|---|
-| `create_custom_chart` | Crea grafico custom in intervals.icu |
-| `list_custom_items` | Elenca grafici, campi e pannelli custom |
-| `get_custom_item` / `update_custom_item` / `delete_custom_item` | Gestione di un custom item |
-| `reorder_custom_items` | Riordina i custom item |
-| `upload_custom_item_image` | Carica l'immagine di un custom item |
-
-### 🗺️ Percorsi, chat ed eventi condivisi
-
-| Tool | Descrizione |
-|---|---|
-| `list_routes` / `get_route` / `update_route` | Percorsi dell'atleta (con o senza tracciato GPS) |
-| `get_route_similarity` | Somiglianza tra due percorsi |
-| `list_chats` / `get_chat` / `list_chat_messages` | Lettura delle chat |
-| `list_groups` | Gruppi dell'atleta |
-| `send_chat_message` | Invia un messaggio reale a una chat o a un atleta |
-| `update_chat_message` / `delete_chat_message` | Modifica o elimina un messaggio |
-| `mark_chat_seen` / `block_chat` | Segna come letto, blocca o sblocca una chat privata |
-| `get_shared_event` | Evento condiviso (es. gara) con i percorsi |
-
-## Prompt / Shortcut (3)
-
-Accessibili da "Add from intervals" in claude.ai o dal menu prompt in Claude Desktop.
-
-| Prompt | Quando | Cosa fa |
-|---|---|---|
-| `morning_check` | Mattina | Red-flag scanner: verifica se ci sono motivi per scostare dal piano settimanale. RI 55-80 senza anomalie = esegui il piano |
-| `weekly_review` | Domenica sera | Strumento PRIMARIO di decisione: analisi settimana conclusa + pianificazione prossima settimana con criteri di eccezione |
-| `activity_review` | Fine attività | Trova automaticamente l'ultima Ride/Run/Swim e la analizza: metriche, zone, pacing, decoupling, dFRC |
-
-### Differenze tra i tool di wellness/fitness
-
-| Domanda | Tool da usare |
-|---|---|
-| "Quanto ho pedalato/corso/nuotato questo mese?" | `get_fitness_summary` — volume e totali grezzi |
-| "Come sto oggi? Posso allenarmi forte?" | `get_recovery_index` — stato recupero fisiologico (oggettivo + soggettivo) |
-| "Sto aumentando troppo? Rischio infortunio?" | `get_training_load_risk` — pattern e rischio del carico |
-| "Com'è il mio stato di forma generale?" | `get_wellness_data` — dati giornalieri raw (HRV, sonno, peso, umore) |
-| "Sto migliorando o peggiorando?" | `get_longitudinal_trends` — trend su EF, potenza, HRV, HRR, CTL, peso |
-| "Il mio allenamento è ben polarizzato?" | `get_polarization_analysis` — distribuzione intensità vs modello 80/20 |
-| "Quanto reggo sotto fatica?" | `get_fatigue_resistance` — durability, FRS |
-| "Quali sono le mie soglie reali?" | `get_dfa_alpha1` — soglie da DFA α1 (serve fascia toracica compatibile) |
-
-## Variabili d'ambiente
-
-| Variabile | Obbligatoria | Default | Descrizione |
+| Variable | Required | Default | Description |
 |---|---|---|---|
-| `INTERVALS_API_KEY` | Sì | — | API key da intervals.icu (Settings → Developer) |
-| `INTERVALS_ATHLETE_ID` | No | `0` (utente corrente) | ID atleta intervals.icu |
-| `MCP_AUTH_TOKEN` | Sì (solo HTTP) | — | Token richiesto su `/mcp` (header `Authorization: Bearer` o `?token=`). Almeno 32 caratteri: `openssl rand -hex 32` |
-| `UPLOAD_DIR` | No | — | Solo HTTP: cartella da cui `upload_activity` può leggere file locali. Senza, l'upload remoto accetta solo `file_base64` |
-| `PORT` | No | `3001` | Porta HTTP (solo per `npm run serve`) |
+| `INTERVALS_API_KEY` | Yes | | intervals.icu API key (Settings → Developer) |
+| `INTERVALS_ATHLETE_ID` | No | `0` (current user) | intervals.icu athlete ID |
+| `MCP_AUTH_TOKEN` | Yes (HTTP only) | | Token required on `/mcp`. At least 32 characters: `openssl rand -hex 32` |
+| `UPLOAD_DIR` | No | | HTTP only: directory from which `upload_activity` may read local files. Without it, remote uploads accept only `file_base64` |
+| `PORT` | No | `3001` | HTTP port (`npm run serve` only) |
+
+## Tools (145)
+
+### Athlete and settings
+
+| Tool | Description |
+|---|---|
+| `get_athlete` | Athlete profile and current fitness (CTL/ATL/TSB) |
+| `get_athlete_profile` | Public profile (bio, shared folders, custom items) |
+| `get_athlete_connections` | Connected devices and platforms |
+| `get_athlete_settings` | Interface settings for phone, tablet or desktop |
+| `update_athlete` | Update the athlete profile (weight, resting HR, birth date, time zone, wellness fields) |
+| `list_athletes` | Athletes followed or coached (requires an API key) |
+| `get_fitness_summary` | Total hours, distance, TSS and activity count per sport over a period |
+| `get_sport_settings` | Zones, FTP, thresholds, max HR |
+| `create_sport_settings` | Create the settings for a sport that has none |
+| `update_sport_settings` | Update sport settings (FTP, LTHR, zones, W', kJ thresholds, ...) |
+| `update_sport_settings_bulk` | Update the settings of several sports at once |
+| `apply_sport_settings` | Apply settings (zones, thresholds) to past activities and recalculate |
+| `delete_sport_settings` | Delete the settings of a sport |
+| `get_weather_config` / `update_weather_config` | Locations used for weather forecasts |
+| `list_tags` | Tags used on events or library workouts |
+| `create_custom_chart` | Create a custom chart |
+| `list_custom_items` | List custom charts, fields and panels |
+| `get_custom_item` / `update_custom_item` / `delete_custom_item` | Manage a custom item |
+| `reorder_custom_items` | Reorder custom items |
+
+### Activities
+
+| Tool | Description |
+|---|---|
+| `get_recent_activities` | Recent activities |
+| `search_activities` | Search activities by text |
+| `search_activities_full` | Search by name or tag, returning full activities |
+| `get_activity_detail` | Full details of an activity |
+| `get_activity_streams` | Time series (power, HR, pace, ...) |
+| `get_activities_by_ids` | Several activities by ID in one call |
+| `get_activities_around` | Activities before and after a given one |
+| `get_matching_activities` | Activities matching a sport setting |
+| `update_activity` | Edit activity metadata (name, type, description, ...) |
+| `delete_activity` | Delete an activity |
+| `delete_activity_tombstone` | Allow a deleted activity to be uploaded again |
+| `create_manual_activity` | Create a manual activity (duration, TSS, ...) |
+| `create_manual_activities_bulk` | Create several manual activities (upsert on `external_id`) |
+| `update_activity_streams` | Correct the streams (power, HR) of an activity |
+| `get_activity_intervals` | Structured intervals of an activity |
+| `update_activity_intervals` | Replace manual intervals |
+| `update_activity_interval` | Update or create a single interval |
+| `delete_activity_intervals` | Delete intervals from an activity |
+| `split_activity_interval` | Split an interval in two |
+| `search_intervals` | Search intervals by duration and intensity |
+| `get_activity_interval_stats` | Statistics (power, HR, NP, ...) over an arbitrary stream range |
+| `get_activity_segments` | Segments recognised in the activity |
+| `get_activity_tags` | Available activity tags |
+| `get_activity_map` | Map and GPS data |
+| `get_activity_weather` | Weather during the activity |
+
+### Curves
+
+| Tool | Description |
+|---|---|
+| `get_power_curves` / `get_pace_curves` / `get_hr_curves` | Athlete curves (season, recent, fatigued) |
+| `get_power_hr_curve` | Aerobic efficiency trend |
+| `get_mmp_model` | MMP model (CP, W', pMax) |
+| `get_pace_distances` | Distances used for pace curves |
+| `get_activity_power_curve` / `get_activity_pace_curve` / `get_activity_hr_curve` | Curves of a single activity |
+| `get_activity_power_curves` | Multi-stream and fresh/fatigued power curves in one call |
+| `get_activity_power_curves_range` | Power curves over a date range (activity comparison) |
+| `get_activity_pace_curves_range` | Best pace per distance over a date range |
+| `get_activity_hr_curves_range` | Best HR per duration over a date range |
+| `get_activity_best_efforts` | Best efforts by duration or distance |
+| `get_activity_power_vs_hr` | Raw power vs HR scatter |
+| `get_activity_power_histogram` | Power distribution |
+| `get_activity_histogram` | HR, pace or grade-adjusted pace distribution |
+| `get_activity_time_at_hr` | Time spent at each HR value |
+| `get_activity_model` | Load model from HR or power peak detection |
+
+### Analysis
+
+Custom tools that compute physiological models on top of the API data. Formulas, constants and references are documented in [docs/MODELS.md](docs/MODELS.md).
+
+| Tool | Description |
+|---|---|
+| `get_recovery_index` | Composite 0-100 recovery index from HRV, resting HR, sleep, Baevsky SI, SpO₂, respiration and subjective fields (mood, motivation, fatigue, soreness, stress, injury), against an individual 30-day baseline |
+| `get_training_load_risk` | Monotony, Strain (Foster, 1998), ACWR (Gabbett, 2016), volume spikes |
+| `get_aerobic_decoupling` | Pw:Hr decoupling: drift between first and second half, EF curve, assessment |
+| `get_activity_dfrc` | dFRC / W'bal of an activity (Skiba model) |
+| `get_metabolic_profile` | VLaMax estimate (Mader), energy breakdown, Coggan power profile |
+| `get_fatigue_resistance` | Durability: fresh vs fatigued power curves, Fatigue Resistance Score, VO₂max retention (Maunder et al., 2021). Requires the kJ threshold `after_kj0` in the sport settings |
+| `get_polarization_analysis` | Time in zones, polarization index, comparison with the 80/20 model (Seiler, 2010; Stöggl & Sperlich, 2015) |
+| `get_longitudinal_trends` | Regression on EF, power, HRR, decoupling, CTL, HRV, resting HR, weight and sleep |
+
+Which tool answers which question:
+
+| Question | Tool |
+|---|---|
+| How much did I ride, run or swim this month? | `get_fitness_summary` |
+| How am I today, can I train hard? | `get_recovery_index` |
+| Am I increasing the load too fast? | `get_training_load_risk` |
+| What do the raw daily wellness values look like? | `get_wellness_data` |
+| Am I improving or declining? | `get_longitudinal_trends` |
+| Is my training well polarized? | `get_polarization_analysis` |
+| How well do I hold power under fatigue? | `get_fatigue_resistance` |
+
+`get_dfa_alpha1` (aerobic and anaerobic thresholds from DFA α1, Rogers et al., 2021) is implemented in [src/analytics/dfa-alpha1.ts](src/analytics/dfa-alpha1.ts), but its registration is commented out in [src/mcp/tools/analysis.ts](src/mcp/tools/analysis.ts) because it needs beat-to-beat RR data from a chest strap. To enable it, uncomment the registration and the import of `computeDfaAnalysis`, and raise the expected tool count in the server test.
+
+### Wellness
+
+| Tool | Description |
+|---|---|
+| `get_wellness_data` | Wellness over a period: CTL, ATL, TSB, HRV, sleep, mood |
+| `get_wellness_day` | Wellness of a single day |
+| `update_wellness` | Update wellness for a date (weight, HRV, sleep, subjective scales) |
+| `update_wellness_bulk` | Update several wellness days in one call |
+| `upload_wellness_csv` | Import wellness from CSV text |
+
+Subjective scales use 1 to 4, where 1 is the best value. They must be enabled in the athlete's wellness fields before intervals.icu stores them.
+
+### Calendar and planning
+
+| Tool | Description |
+|---|---|
+| `get_events` | Calendar events (workouts, races, notes) with a category filter |
+| `get_event` | A single event by ID |
+| `create_training_plan` | Create a training plan on the calendar in one bulk call |
+| `update_event` | Edit an event |
+| `mark_event_done` | Mark a planned workout as done (creates a manual activity) |
+| `delete_event` | Delete an event |
+| `duplicate_events` | Duplicate events (repeat weekly blocks) |
+| `bulk_delete_events` | Delete events in batch |
+| `delete_events_range` | Delete all events in a date range |
+| `update_events_range` | Hide or lock events in a range (coach feature) |
+| `get_training_plan` | Details of the active training plan |
+| `update_training_plan` | Change the plan assigned to the athlete |
+| `update_athlete_plans` | Coach: change the plan of several athletes at once |
+| `apply_plan` | Apply a library plan to the calendar from a date |
+| `apply_plan_changes` | Propagate changes of the active plan to the calendar |
+| `get_fitness_model_events` | Fitness model events (CTL/ATL/TSB) |
+| `get_weather_forecast` | Weather forecast for your location |
+| `get_shared_event` | Shared event (for example a race) with its routes |
+
+### Workout library
+
+| Tool | Description |
+|---|---|
+| `get_folders` | Workout and plan folders |
+| `create_folder` / `update_folder` / `delete_folder` | Manage folders and plans (deleting removes their workouts) |
+| `get_folder_shared_with` / `update_folder_shared_with` | Sharing of folders and plans with other athletes |
+| `get_workouts` | Saved workouts |
+| `get_workout` | A library workout |
+| `create_workout` / `create_workouts_bulk` | Create one or several library workouts |
+| `update_workout` / `delete_workout` | Edit or delete a library workout |
+| `duplicate_workouts` | Duplicate workouts onto a plan |
+| `convert_workout` | Convert a library workout to zwo, mrc, erg or fit |
+| `update_plan_workouts` | Hide or show a range of plan workouts to the athlete |
+
+### Files
+
+| Tool | Description |
+|---|---|
+| `upload_activity` | Upload an activity file (FIT, TCX, GPX) as base64 or, where allowed, from a local path |
+| `upload_activity_streams_csv` | Update the streams of an activity from CSV |
+| `import_workout_file` | Import a zwo, mrc, erg or fit file into a folder |
+| `upload_custom_item_image` | Upload the image of a custom item |
+| `download_activity_file` | Original, fit or gpx file of an activity (up to about 1.5 MB) |
+| `download_activity_fit_files` | Zip of generated fit files for several activities |
+| `download_event_workout` | Export a planned workout as zwo, mrc, erg or fit |
+| `download_workouts_zip` | Zip of the workouts in a date range (zwo, mrc, erg, fit) |
+| `export_csv` | CSV export of activities, wellness, gear, events, athlete curves and single-activity data |
+
+### Gear
+
+| Tool | Description |
+|---|---|
+| `get_gear` | Gear list (bikes, shoes, ...) with distance and maintenance |
+| `create_gear` / `update_gear` / `delete_gear` | Manage gear and components |
+| `replace_gear` | Retire a component and replace it, keeping the reminders |
+| `create_gear_reminder` / `update_gear_reminder` / `delete_gear_reminder` | Maintenance reminders (including reset and snooze) |
+| `recalculate_gear_stats` | Recalculate distance, hours and activities of a gear item |
+
+### Routes, chats and messages
+
+| Tool | Description |
+|---|---|
+| `list_routes` / `get_route` / `update_route` | Athlete routes, with or without GPS track |
+| `get_route_similarity` | Similarity between two routes |
+| `list_chats` / `get_chat` / `list_chat_messages` | Read chats |
+| `list_groups` | Athlete groups |
+| `send_chat_message` | Send a real message to a chat or an athlete |
+| `update_chat_message` / `delete_chat_message` | Edit or delete a message |
+| `mark_chat_seen` / `block_chat` | Mark as read, block or unblock a private chat |
+| `list_activity_messages` / `add_activity_message` | Comments on an activity |
+
+## Prompts (3)
+
+Available through the prompt picker in claude.ai and Claude Desktop.
+
+| Prompt | When | What it does |
+|---|---|---|
+| `morning_check` | Morning | Red-flag scan: decides whether anything justifies deviating from the weekly plan. A recovery index between 55 and 80 without anomalies means executing the plan |
+| `weekly_review` | Sunday evening | Primary decision tool: review of the past week and planning of the next one, with explicit exception criteria |
+| `activity_review` | After a session | Finds the latest Ride, Run or Swim and analyses metrics, zones, pacing, decoupling and dFRC |
+
+The prompt texts are written in Italian.
+
+## Development
+
+```bash
+npm run build       # compile TypeScript
+npm test            # run tests (vitest)
+npm run test:watch  # tests in watch mode
+npm run lint        # lint with Biome
+npm run lint:fix    # lint with automatic fixes
+npm run check       # type-check + lint + tests
+```
+
+### Project structure
+
+```
+src/
+├── server.ts           # createServer(): wires prompts and tool modules, adds MCP annotations
+├── http.ts             # Streamable HTTP transport (Express, token auth, sessions)
+├── stdio.ts            # stdio transport (Claude Desktop)
+├── intervals.ts        # HTTP client for the intervals.icu API
+├── types.ts            # response types
+├── mcp/
+│   ├── helpers.ts      # shared zod schemas, result helpers, date helpers, ServerOptions
+│   ├── prompts.ts      # the three prompts
+│   └── tools/          # tool registration, one module per domain
+│       ├── athlete.ts      activities.ts   curves.ts     analysis.ts
+│       ├── wellness.ts     events.ts       workouts.ts   files.ts
+│       └── gear.ts         social.ts
+└── analytics/          # pure computation behind the analysis tools
+    ├── decoupling.ts           # aerobic decoupling Pw:Hr
+    ├── dfa-alpha1.ts           # DFA α1 threshold detection (not registered)
+    ├── dfrc.ts                 # dFRC / W'bal (Skiba)
+    ├── fatigue-resistance.ts   # durability: fresh vs fatigued curves
+    ├── metabolic.ts            # metabolic profile (VLaMax, Coggan)
+    ├── polarization.ts         # intensity distribution
+    ├── recovery.ts             # composite recovery index
+    ├── training-load.ts        # monotony, strain, ACWR
+    ├── trends.ts               # longitudinal trends and HRR
+    └── utils.ts                # shared helpers (stream extraction, sport matching)
+docs/
+└── MODELS.md           # mathematical models and literature (Italian)
+```
+
+Tests live in `__tests__` folders next to the code they cover. Each registration function in `src/mcp/tools/` receives the `McpServer`; `registerFileTools` also receives the server options, because `upload_activity` depends on the upload policy. `server.ts` counts registrations and derives the read-only, destructive and open-world annotations from tool names, so a new tool is annotated correctly by following the existing naming (`get_`, `list_`, `delete_`, ...).
 
 ## Troubleshooting
 
-| Problema | Soluzione |
+| Problem | Solution |
 |---|---|
-| `INTERVALS_API_KEY is required` | Crea `.env` con la tua API key (`cp .env.example .env`) |
-| `intervals.icu 401` | API key errata o scaduta — rigenerala da Settings → Developer |
-| `intervals.icu 404` | Activity ID o athlete ID non valido |
-| `intervals.icu 429` | Rate limit (10 richieste/s): il server riprova da solo per attese brevi, altrimenti riprova dopo i secondi indicati |
-| `401 unauthorized` su `/mcp` | `MCP_AUTH_TOKEN` mancante o diverso nell'URL del connector |
-| `get_fatigue_resistance` senza curva affaticata | Imposta la soglia kJ (`after_kj0`) nelle impostazioni sport su intervals.icu |
-| Tool non risponde | Controlla la connessione internet e che intervals.icu sia raggiungibile |
-| Claude Desktop non vede i tool | Riavvia Claude Desktop dopo aver modificato `claude_desktop_config.json` |
-| Pi tunnel URL cambiato | L'URL cambia dopo un reboot del Pi — recuperalo con `journalctl -u cloudflared` |
+| `INTERVALS_API_KEY is required` | Create `.env` with your API key (`cp .env.example .env`) |
+| `intervals.icu 401` | Wrong or expired API key: regenerate it in Settings → Developer |
+| `intervals.icu 404` | Invalid activity or athlete ID |
+| `intervals.icu 429` | Rate limit (10 requests/s). The server retries short waits by itself; otherwise retry after the indicated seconds |
+| `401 unauthorized` on `/mcp` | `MCP_AUTH_TOKEN` is missing or differs from the one in the connector URL |
+| `get_fatigue_resistance` returns no fatigued curve | Set the kJ threshold (`after_kj0`) in the sport settings on intervals.icu. Curves can take a few minutes to recompute after the change |
+| A tool does not respond | Check the internet connection and that intervals.icu is reachable |
+| Claude Desktop does not list the tools | Restart Claude Desktop after editing `claude_desktop_config.json` |
 
 ## Future works
 
-Tool di analisi avanzata pianificati, costruiti sugli endpoint già disponibili. In ordine di priorità:
+Planned analysis tools built on the endpoints that already exist, in order of priority.
 
-| Tool | Cosa farà | Dati usati |
+| Tool | What it will do | Data used |
 |---|---|---|
-| `project_form` | Proietta CTL/ATL/TSB nei giorni futuri usando il carico dei workout pianificati: forma prevista il giorno della gara e verifica del taper (modello EWMA 42/7 giorni) | `get_events` (load_target), wellness |
-| `get_pace_decoupling` | Decoupling passo:FC per corse senza misuratore di potenza, con passo corretto per pendenza (GAP) in salita | stream `velocity_smooth`, `gap`, `heartrate` |
-| `get_cp_history` | Andamento mese per mese di CP, W' e Pmax, per vedere se la stagione sposta la curva | power curves per intervallo di date (`r.YYYY-MM-DD.YYYY-MM-DD`) con modello PD |
-| `get_durability` | Durability nella singola uscita lunga: calo di potenza a FC fissa e deriva di DFA α1 tra prima e ultima ora | stream, `interval-stats`, curve affaticate |
-| `get_interval_fade` | Calo ripetuta per ripetuta in una seduta a intervalli: potenza, FC e decoupling per rep | intervalli dell'attività |
-| `get_plan_compliance` | Pianificato contro eseguito per settimana: carico, durata, campo `compliance` delle attività | eventi, attività |
-| `get_hrv_threshold_history` | Andamento di HRVT1/HRVT2 (DFA α1) nel tempo dalle uscite con intervalli RR | stream `hrv` |
+| `project_form` | Project CTL/ATL/TSB over future days from the load of planned workouts: expected form on race day and taper check (42/7-day EWMA model) | `get_events` (load_target), wellness |
+| `get_pace_decoupling` | Pace:HR decoupling for runs without a power meter, with grade-adjusted pace on climbs | streams `velocity_smooth`, `gap`, `heartrate` |
+| `get_cp_history` | Month-by-month CP, W' and Pmax, to see whether the season shifts the curve | power curves per date range (`r.YYYY-MM-DD.YYYY-MM-DD`) with the PD model |
+| `get_durability` | Durability within a single long ride: power drop at fixed HR and DFA α1 drift between the first and last hour | streams, `interval-stats`, fatigued curves |
+| `get_interval_fade` | Rep-by-rep fade in an interval session: power, HR and decoupling per rep | activity intervals |
+| `get_plan_compliance` | Planned against executed per week: load, duration, the `compliance` field of activities | events, activities |
+| `get_hrv_threshold_history` | HRVT1/HRVT2 (DFA α1) over time from rides with RR intervals | stream `hrv` |
 
-Prerequisiti lato dati per sfruttarli al meglio: soglia kJ (`after_kj0`) impostata nelle impostazioni sport, registrazione RR ("Log HRV") attiva sul device con fascia toracica, campi soggettivi del wellness compilati.
+Data prerequisites: the kJ threshold (`after_kj0`) set in the sport settings, RR recording ("Log HRV") enabled on the device with a chest strap, and the subjective wellness fields filled in.
+
+## License
+
+[MIT](LICENSE)
