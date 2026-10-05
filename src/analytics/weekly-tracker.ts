@@ -7,6 +7,15 @@ type SportTotals = Record<TrackedSport, number>;
 
 const DAY_MS = 86_400_000;
 
+// intervals.icu default Activity Types (Settings): the API omits some of them (Yoga), the athlete's own entries win
+const DEFAULT_FITNESS_FACTOR: [string, number][] = [
+  ["Yoga", 0],
+  ["Pilates", 0],
+  ["WeightTraining", 0.6],
+  ["Workout", 0.6],
+  ["Hike", 0.45],
+];
+
 /** Groups intervals.icu activity types into the three tracked sports; everything else is "other". */
 export function sportGroup(type?: string): Bucket {
   const t = (type ?? "").toLowerCase();
@@ -57,13 +66,23 @@ export async function computeWeeklyTracker(opts: WeeklyTrackerOptions, today: st
   const lastDay = addDays(firstMonday, weekCount * 7 - 1);
   const manualTargets = new Map((opts.targets ?? []).map((t) => [mondayOf(t.week_start), t.tss]));
 
-  const [events, activities] = await Promise.all([
+  const [events, activities, athlete] = await Promise.all([
     icu.getEvents(firstMonday, lastDay, "WORKOUT,TARGET", { limit: 1000 }),
     icu.getActivities(firstMonday, lastDay, {
       limit: 2000,
       fields: ["start_date_local", "type", "icu_training_load"],
     }),
+    icu.getAthlete(),
   ]);
+
+  // Activity Types in the athlete settings: share of load that counts toward fitness (Yoga/Pilates at 0%). Unlisted types count 100%.
+  const typeSettings =
+    (athlete as { icu_type_settings?: { type?: string; ctlFactor?: number }[] } | undefined)?.icu_type_settings ?? [];
+  const fitnessFactor = new Map<string, number>([
+    ...DEFAULT_FITNESS_FACTOR,
+    ...typeSettings.map((t) => [t.type ?? "", t.ctlFactor ?? 1] as [string, number]),
+  ]);
+  const weighted = (type: string | undefined, load: number) => load * (fitnessFactor.get(type ?? "") ?? 1);
 
   const planned = new Map<string, SportTotals>();
   const actual = new Map<string, SportTotals>();
@@ -90,13 +109,13 @@ export async function computeWeeklyTracker(opts: WeeklyTrackerOptions, today: st
     }
     const sport = sportGroup(e.type);
     if (!date || sport === "other") continue;
-    const load = Number(e.icu_training_load ?? e.load_target ?? 0);
+    const load = weighted(e.type, Number(e.icu_training_load ?? e.load_target ?? 0));
     if (load > 0) bucketFor(planned, date, emptyTotals)[sport] += load;
   }
 
   for (const a of activities ?? []) {
     const date = String(a.start_date_local ?? "").slice(0, 10);
-    const load = Number(a.icu_training_load ?? 0);
+    const load = weighted(a.type, Number(a.icu_training_load ?? 0));
     if (!date || !(load > 0)) continue;
     const sport = sportGroup(a.type);
     if (sport === "other") other.set(date, (other.get(date) ?? 0) + load);
@@ -171,7 +190,8 @@ export async function computeWeeklyTracker(opts: WeeklyTrackerOptions, today: st
   return {
     range: { from: firstMonday, to: lastDay, today, weeks_before: before, weeks_after: after },
     sports_tracked: TRACKED_SPORTS,
-    note: "TSS is intervals.icu icu_training_load. Only swim, bike (all ride types) and run (all run types) count toward the columns; every other activity (strength, Hike, Yoga, Pilates, ...) is reported separately as other_tss_not_counted. Weekly targets come from manual targets, then TARGET calendar events, then the load of planned workouts.",
+    activity_type_fitness_pct: [...fitnessFactor].map(([type, f]) => ({ type, pct: Math.round(f * 100) })),
+    note: "TSS is intervals.icu icu_training_load. Only swim, bike (all ride types) and run (all run types) count toward the columns; every other activity (strength, Hike, ...) is reported separately as other_tss_not_counted. All loads are weighted with the athlete's Activity Types settings (fitness %), so types set to 0% such as Yoga and Pilates do not appear at all. Weekly targets come from manual targets, then TARGET calendar events, then the load of planned workouts.",
     ...(weeksWithoutTarget > 0 && {
       hint: `${weeksWithoutTarget} of ${weekCount} weeks have no target yet (no TARGET event and no planned workouts with load). Their columns stay empty until the plan is created.`,
     }),
