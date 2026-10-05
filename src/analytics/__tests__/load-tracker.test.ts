@@ -3,11 +3,10 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 vi.mock("../../intervals.js", () => ({
   getEvents: vi.fn(),
   getActivities: vi.fn(),
-  getAthlete: vi.fn(),
 }));
 
 import * as icu from "../../intervals.js";
-import { computeWeeklyTracker, sportGroup } from "../weekly-tracker.js";
+import { computeLoadTracker, sportGroup } from "../load-tracker.js";
 
 describe("sportGroup", () => {
   it("maps intervals.icu types to the tracked sports", () => {
@@ -15,14 +14,15 @@ describe("sportGroup", () => {
     expect(sportGroup("GravelRide")).toBe("bike");
     expect(sportGroup("TrailRun")).toBe("run");
     expect(sportGroup("OpenWaterSwim")).toBe("swim");
-    expect(sportGroup("WeightTraining")).toBe("other");
+    expect(sportGroup("WeightTraining")).toBe("strength");
+    expect(sportGroup("Workout")).toBe("strength");
     expect(sportGroup("Hike")).toBe("other");
     expect(sportGroup("Yoga")).toBe("other");
     expect(sportGroup(undefined)).toBe("other");
   });
 });
 
-describe("computeWeeklyTracker", () => {
+describe("computeLoadTracker", () => {
   beforeEach(() => vi.resetAllMocks());
 
   // 2026-10-07 is a Wednesday; its week runs Mon 2026-10-05 to Sun 2026-10-11
@@ -40,12 +40,7 @@ describe("computeWeeklyTracker", () => {
       { start_date_local: "2026-10-07T08:00:00", type: "Run", icu_training_load: null },
     ] as never);
 
-    vi.mocked(icu.getAthlete).mockResolvedValue({
-      id: "i1",
-      icu_type_settings: [{ type: "WeightTraining", ctlFactor: 0.4, atlFactor: 0.75 }],
-    } as never);
-
-    const r = await computeWeeklyTracker({ weeksBefore: 0, weeksAfter: 1, start: "2026-10-07" }, "2026-10-07");
+    const r = await computeLoadTracker({ weeksBefore: 0, weeksAfter: 1, start: "2026-10-07" }, "2026-10-07");
 
     expect(r.range).toMatchObject({ from: "2026-10-05", to: "2026-10-18" });
     const [w1, w2] = r.weeks;
@@ -54,14 +49,14 @@ describe("computeWeeklyTracker", () => {
       status: "current",
       target_tss: 140,
       target_source: "planned_events",
-      actual_tss: 110,
+      actual_tss: 135,
     });
-    expect(w1.actual_tss_by_sport).toEqual({ swim: 40, bike: 70, run: 0 });
-    expect(w1.other_tss_not_counted).toBe(10); // WeightTraining 25 x 40% (athlete setting), Yoga 10 x 0% (default)
-    expect(w1.completion_pct).toBe(78.6);
-    expect(w1.remaining_tss).toBe(30);
+    expect(w1.actual_tss_by_sport).toEqual({ swim: 40, bike: 70, run: 0, strength: 25 });
+    expect(w1).not.toHaveProperty("other_tss_not_counted"); // Yoga is noise
+    expect(w1.completion_pct).toBe(96.4);
+    expect(w1.remaining_tss).toBe(5);
     expect(w1.days_left_including_today).toBe(5);
-    expect(w1.days?.map((d) => d.cumulative_tss)).toEqual([40, 110, 110, 110, 110, 110, 110]);
+    expect(w1.days?.map((d) => d.cumulative_tss)).toEqual([40, 135, 135, 135, 135, 135, 135]);
     expect(w2).toMatchObject({ position: 1, status: "future", target_tss: 50, actual_tss: 0 });
     expect(w2.days).toBeUndefined();
     expect(r.hint).toBeUndefined();
@@ -71,7 +66,7 @@ describe("computeWeeklyTracker", () => {
     vi.mocked(icu.getEvents).mockResolvedValue([]);
     vi.mocked(icu.getActivities).mockResolvedValue([]);
 
-    const r = await computeWeeklyTracker({}, "2026-10-07");
+    const r = await computeLoadTracker({}, "2026-10-07");
 
     expect(r.weeks).toHaveLength(13);
     expect(r.weeks[0]).toMatchObject({ week_start: "2026-09-28", position: -1, status: "past" });
@@ -93,7 +88,7 @@ describe("computeWeeklyTracker", () => {
     ]);
     vi.mocked(icu.getActivities).mockResolvedValue([]);
 
-    const r = await computeWeeklyTracker(
+    const r = await computeLoadTracker(
       { weeksBefore: 0, weeksAfter: 3, targets: [{ week_start: "2026-10-19", tss: 400 }] },
       "2026-10-05",
     );
@@ -111,7 +106,7 @@ describe("computeWeeklyTracker", () => {
     vi.mocked(icu.getEvents).mockResolvedValue([]);
     vi.mocked(icu.getActivities).mockResolvedValue([]);
 
-    const r = await computeWeeklyTracker(
+    const r = await computeLoadTracker(
       {
         weeksBefore: 0,
         weeksAfter: 2,
@@ -134,7 +129,7 @@ describe("computeWeeklyTracker", () => {
     vi.mocked(icu.getEvents).mockResolvedValue([]);
     vi.mocked(icu.getActivities).mockResolvedValue([]);
 
-    const r = await computeWeeklyTracker({ weeksBefore: 99, weeksAfter: 99, start: "2026-10-11" }, "2026-10-11");
+    const r = await computeLoadTracker({ weeksBefore: 99, weeksAfter: 99, start: "2026-10-11" }, "2026-10-11");
 
     expect(r.weeks).toHaveLength(53);
     expect(r.weeks[26]).toMatchObject({ week_start: "2026-10-05", week_end: "2026-10-11", position: 0 });

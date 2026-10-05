@@ -3,12 +3,12 @@ import { z } from "zod";
 import { computeDecoupling } from "../../analytics/decoupling.js";
 import { computeDfrc } from "../../analytics/dfrc.js";
 import { computeFatigueResistance } from "../../analytics/fatigue-resistance.js";
+import { computeLoadTracker } from "../../analytics/load-tracker.js";
 import { computeMetabolicProfile } from "../../analytics/metabolic.js";
 import { computePolarization } from "../../analytics/polarization.js";
 import { computeRecoveryIndex } from "../../analytics/recovery.js";
 import { computeTrainingLoadRisk } from "../../analytics/training-load.js";
 import { computeTrends } from "../../analytics/trends.js";
-import { computeWeeklyTracker } from "../../analytics/weekly-tracker.js";
 import { dateStr, daysAgo, safeReturn, today, toolError } from "../helpers.js";
 
 export function registerAnalysisTools(server: McpServer): void {
@@ -209,10 +209,10 @@ export function registerAnalysisTools(server: McpServer): void {
     },
   );
 
-  // --- get_weekly_load_tracker ---
+  // --- get_load_tracker ---
   server.tool(
-    "get_weekly_load_tracker",
-    "Weekly TSS tracker (Monday to Sunday): the previous week, the current week and the next 11 weeks (about 3 months), always in this order. Only swim, bike and run count; every other activity (strength, Hike, ...) is reported separately as other_tss_not_counted. Loads are weighted with the athlete's Activity Types settings (fitness %), so Yoga and Pilates at 0% do not appear. For each week returns the TSS target (manual 'targets', else the weekly TARGET calendar event, else the sum of planned workout load), the TSS done split by swim, bike and run, completion %, remaining TSS, and for the current week the per-day cumulative TSS so its column can be filled day by day. Weeks without a target have target_tss null (empty column). Render it as vertical columns (see chart_hint in the response).",
+    "get_load_tracker",
+    "Load Tracker: weekly TSS for the previous week, the current week and the next 11 weeks (about 3 months, Monday to Sunday), always in this order. Only swim, bike, run and strength (gym) count; every other activity (Hike, Yoga, Pilates, ...) is noise and counts 0. For each week returns the TSS target (manual 'targets', else the weekly TARGET calendar event, else the sum of planned workout load), the TSS done split by swim, bike, run and strength, completion %, remaining TSS, and for the current week the per-day cumulative TSS so its column can be filled day by day. Weeks without a target have target_tss null (empty column). Render it as vertical stacked columns (see chart_hint in the response).",
     {
       weeks_before: z.number().int().min(0).max(26).optional().describe("Weeks before the current one (default 1)"),
       weeks_after: z.number().int().min(0).max(26).optional().describe("Weeks after the current one (default 11)"),
@@ -230,7 +230,7 @@ export function registerAnalysisTools(server: McpServer): void {
     },
     async ({ weeks_before, weeks_after, start, targets }) => {
       try {
-        const result = await computeWeeklyTracker(
+        const result = await computeLoadTracker(
           { weeksBefore: weeks_before, weeksAfter: weeks_after, start, targets },
           today(),
         );

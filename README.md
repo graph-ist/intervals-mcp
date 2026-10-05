@@ -158,7 +158,7 @@ Custom tools that compute physiological models on top of the API data. Formulas,
 | `get_fatigue_resistance` | Durability: fresh vs fatigued power curves, Fatigue Resistance Score, VO₂max retention (Maunder et al., 2021). Requires the kJ threshold `after_kj0` in the sport settings |
 | `get_polarization_analysis` | Time in zones, polarization index, comparison with the 80/20 model (Seiler, 2010; Stöggl & Sperlich, 2015) |
 | `get_longitudinal_trends` | Regression on EF, power, HRR, decoupling, CTL, HRV, resting HR, weight and sleep |
-| `get_weekly_load_tracker` | Weekly TSS tracker (Monday to Sunday): the previous week, the current week and the next 11 (about 3 months). Only swim, bike and run count; anything else (strength, Hike, ...) is reported separately. All loads are weighted with the athlete's Activity Types settings (fitness %), so Yoga and Pilates at 0% do not appear. Per week: target (manual `targets` by date, else the weekly `TARGET` calendar event, else the load of planned workouts), TSS done per sport, completion %, remaining TSS and, for the current week, the daily cumulative TSS. Weeks without a target stay empty |
+| `get_load_tracker` | Load Tracker: weekly TSS for the previous week, the current week and the next 11 (about 3 months, Monday to Sunday). Only swim, bike, run and strength count; every other activity is noise and counts 0. Per week: target (manual `targets` by date, else the weekly `TARGET` calendar event, else the load of planned workouts), TSS done per sport, completion %, remaining TSS and, for the current week, the daily cumulative TSS. Weeks without a target stay empty |
 
 Which tool answers which question:
 
@@ -171,7 +171,7 @@ Which tool answers which question:
 | Am I improving or declining? | `get_longitudinal_trends` |
 | Is my training well polarized? | `get_polarization_analysis` |
 | How well do I hold power under fatigue? | `get_fatigue_resistance` |
-| Am I on track with the weekly TSS I planned? | `get_weekly_load_tracker` |
+| Am I on track with the weekly TSS I planned? | `get_load_tracker` |
 
 `get_dfa_alpha1` (aerobic and anaerobic thresholds from DFA α1, Rogers et al., 2021) is implemented in [src/analytics/dfa-alpha1.ts](src/analytics/dfa-alpha1.ts), but its registration is commented out in [src/mcp/tools/analysis.ts](src/mcp/tools/analysis.ts) because it needs beat-to-beat RR data from a chest strap. To enable it, uncomment the registration and the import of `computeDfaAnalysis`, and raise the expected tool count in the server test.
 
@@ -271,7 +271,7 @@ Available through the prompt picker in claude.ai and Claude Desktop.
 | `morning_check` | Morning | Red-flag scan: decides whether anything justifies deviating from the weekly plan. A recovery index between 55 and 80 without anomalies means executing the plan |
 | `weekly_review` | Sunday evening | Primary decision tool: review of the past week and planning of the next one, with explicit exception criteria |
 | `activity_review` | After a session | Finds the latest Ride, Run or Swim and analyses metrics, zones, pacing, decoupling and dFRC |
-| `weekly_load_tracker` | Any time | Calls `get_weekly_load_tracker` and draws 12 weekly columns starting from the current week, filled with the TSS done in swim, bike and run against the target. Weeks without a target stay empty |
+| `load_tracker` | Any time | Calls `get_load_tracker` and draws weekly columns for the previous week, the current one and the next 11, filled with the TSS done in swim, bike, run and gym against the target. Weeks without a target stay empty |
 
 The prompt texts are written in Italian.
 
@@ -313,7 +313,7 @@ src/
     ├── training-load.ts        # monotony, strain, ACWR
     ├── trends.ts               # longitudinal trends and HRR
     ├── utils.ts                # shared helpers (stream extraction, sport matching)
-    └── weekly-tracker.ts       # weekly TSS target vs done, per sport and day
+    └── load-tracker.ts         # weekly TSS target vs done, per sport and day
 docs/
 └── MODELS.md           # mathematical models and literature (Italian)
 ```

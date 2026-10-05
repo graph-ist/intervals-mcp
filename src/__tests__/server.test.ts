@@ -65,8 +65,8 @@ describe("createServer", () => {
     const { prompts } = await client.listPrompts();
     expect(prompts.map((p) => p.name).sort()).toEqual([
       "activity_review",
+      "load_tracker",
       "morning_check",
-      "weekly_load_tracker",
       "weekly_review",
     ]);
     for (const { name } of prompts) {

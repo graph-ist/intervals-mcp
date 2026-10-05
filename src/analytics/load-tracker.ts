@@ -1,32 +1,26 @@
 import * as icu from "../intervals.js";
 
-export const TRACKED_SPORTS = ["swim", "bike", "run"] as const;
+export const TRACKED_SPORTS = ["swim", "bike", "run", "strength"] as const;
 export type TrackedSport = (typeof TRACKED_SPORTS)[number];
 type Bucket = TrackedSport | "other";
 type SportTotals = Record<TrackedSport, number>;
 
 const DAY_MS = 86_400_000;
 
-// intervals.icu default Activity Types (Settings): the API omits some of them (Yoga), the athlete's own entries win
-const DEFAULT_FITNESS_FACTOR: [string, number][] = [
-  ["Yoga", 0],
-  ["Pilates", 0],
-  ["WeightTraining", 0.6],
-  ["Workout", 0.6],
-  ["Hike", 0.45],
-];
+const STRENGTH_TYPES = new Set(["weighttraining", "workout", "crossfit"]);
 
-/** Groups intervals.icu activity types into the three tracked sports; everything else is "other". */
+/** Groups intervals.icu activity types into the four tracked sports; everything else is noise ("other") and counts 0. */
 export function sportGroup(type?: string): Bucket {
   const t = (type ?? "").toLowerCase();
   if (t.endsWith("swim")) return "swim";
   if (t.endsWith("ride")) return "bike";
   if (t.endsWith("run")) return "run";
+  if (STRENGTH_TYPES.has(t)) return "strength";
   return "other";
 }
 
-const emptyTotals = (): SportTotals => ({ swim: 0, bike: 0, run: 0 });
-const sum = (t: SportTotals) => t.swim + t.bike + t.run;
+const emptyTotals = (): SportTotals => ({ swim: 0, bike: 0, run: 0, strength: 0 });
+const sum = (t: SportTotals) => t.swim + t.bike + t.run + t.strength;
 const round = (n: number) => Math.round(n);
 
 function addDays(iso: string, n: number): string {
@@ -41,10 +35,10 @@ function mondayOf(iso: string): string {
 }
 
 function roundTotals(t: SportTotals): SportTotals {
-  return { swim: round(t.swim), bike: round(t.bike), run: round(t.run) };
+  return { swim: round(t.swim), bike: round(t.bike), run: round(t.run), strength: round(t.strength) };
 }
 
-export type WeeklyTrackerOptions = {
+export type LoadTrackerOptions = {
   /** Weeks before the current one (default 1, max 26). */
   weeksBefore?: number;
   /** Weeks after the current one (default 11, max 26). */
@@ -57,7 +51,7 @@ export type WeeklyTrackerOptions = {
 
 const clampWeeks = (n: number | undefined, fallback: number) => Math.min(Math.max(Math.floor(n ?? fallback), 0), 26);
 
-export async function computeWeeklyTracker(opts: WeeklyTrackerOptions, today: string) {
+export async function computeLoadTracker(opts: LoadTrackerOptions, today: string) {
   const before = clampWeeks(opts.weeksBefore, 1);
   const after = clampWeeks(opts.weeksAfter, 11);
   const weekCount = before + 1 + after;
@@ -66,27 +60,16 @@ export async function computeWeeklyTracker(opts: WeeklyTrackerOptions, today: st
   const lastDay = addDays(firstMonday, weekCount * 7 - 1);
   const manualTargets = new Map((opts.targets ?? []).map((t) => [mondayOf(t.week_start), t.tss]));
 
-  const [events, activities, athlete] = await Promise.all([
+  const [events, activities] = await Promise.all([
     icu.getEvents(firstMonday, lastDay, "WORKOUT,TARGET", { limit: 1000 }),
     icu.getActivities(firstMonday, lastDay, {
       limit: 2000,
       fields: ["start_date_local", "type", "icu_training_load"],
     }),
-    icu.getAthlete(),
   ]);
-
-  // Activity Types in the athlete settings: share of load that counts toward fitness (Yoga/Pilates at 0%). Unlisted types count 100%.
-  const typeSettings =
-    (athlete as { icu_type_settings?: { type?: string; ctlFactor?: number }[] } | undefined)?.icu_type_settings ?? [];
-  const fitnessFactor = new Map<string, number>([
-    ...DEFAULT_FITNESS_FACTOR,
-    ...typeSettings.map((t) => [t.type ?? "", t.ctlFactor ?? 1] as [string, number]),
-  ]);
-  const weighted = (type: string | undefined, load: number) => load * (fitnessFactor.get(type ?? "") ?? 1);
 
   const planned = new Map<string, SportTotals>();
   const actual = new Map<string, SportTotals>();
-  const other = new Map<string, number>();
   const bucketFor = <T>(map: Map<string, T>, date: string, make: () => T): T => {
     let v = map.get(date);
     if (!v) {
@@ -109,17 +92,16 @@ export async function computeWeeklyTracker(opts: WeeklyTrackerOptions, today: st
     }
     const sport = sportGroup(e.type);
     if (!date || sport === "other") continue;
-    const load = weighted(e.type, Number(e.icu_training_load ?? e.load_target ?? 0));
+    const load = Number(e.icu_training_load ?? e.load_target ?? 0);
     if (load > 0) bucketFor(planned, date, emptyTotals)[sport] += load;
   }
 
   for (const a of activities ?? []) {
     const date = String(a.start_date_local ?? "").slice(0, 10);
-    const load = weighted(a.type, Number(a.icu_training_load ?? 0));
-    if (!date || !(load > 0)) continue;
+    const load = Number(a.icu_training_load ?? 0);
     const sport = sportGroup(a.type);
-    if (sport === "other") other.set(date, (other.get(date) ?? 0) + load);
-    else bucketFor(actual, date, emptyTotals)[sport] += load;
+    if (!date || !(load > 0) || sport === "other") continue;
+    bucketFor(actual, date, emptyTotals)[sport] += load;
   }
 
   let weeksWithoutTarget = 0;
@@ -131,7 +113,6 @@ export async function computeWeeklyTracker(opts: WeeklyTrackerOptions, today: st
     const end = addDays(start, 6);
     const plannedWeek = emptyTotals();
     const actualWeek = emptyTotals();
-    let otherWeek = 0;
     let cumulative = 0;
 
     const days = Array.from({ length: 7 }, (_, d) => {
@@ -142,7 +123,6 @@ export async function computeWeeklyTracker(opts: WeeklyTrackerOptions, today: st
         plannedWeek[s] += plan[s];
         actualWeek[s] += act[s];
       }
-      otherWeek += other.get(date) ?? 0;
       cumulative += sum(act);
       return { date, tss: roundTotals(act), total_tss: round(sum(act)), cumulative_tss: round(cumulative) };
     });
@@ -177,7 +157,6 @@ export async function computeWeeklyTracker(opts: WeeklyTrackerOptions, today: st
       planned_tss_by_sport: roundTotals(plannedWeek),
       actual_tss: round(actualTotal),
       actual_tss_by_sport: roundTotals(actualWeek),
-      other_tss_not_counted: round(otherWeek),
       completion_pct: target ? Math.round((actualTotal / target) * 1000) / 10 : null,
       remaining_tss: remaining != null ? round(remaining) : null,
       ...(status === "current" && remaining != null && daysLeft
@@ -190,8 +169,7 @@ export async function computeWeeklyTracker(opts: WeeklyTrackerOptions, today: st
   return {
     range: { from: firstMonday, to: lastDay, today, weeks_before: before, weeks_after: after },
     sports_tracked: TRACKED_SPORTS,
-    activity_type_fitness_pct: [...fitnessFactor].map(([type, f]) => ({ type, pct: Math.round(f * 100) })),
-    note: "TSS is intervals.icu icu_training_load. Only swim, bike (all ride types) and run (all run types) count toward the columns; every other activity (strength, Hike, ...) is reported separately as other_tss_not_counted. All loads are weighted with the athlete's Activity Types settings (fitness %), so types set to 0% such as Yoga and Pilates do not appear at all. Weekly targets come from manual targets, then TARGET calendar events, then the load of planned workouts.",
+    note: "TSS is intervals.icu icu_training_load. Only swim, bike (all ride types), run (all run types) and strength (WeightTraining, Workout, CrossFit) count; every other activity (Hike, Yoga, Pilates, ...) is ignored and counts 0. Weekly targets come from manual targets, then TARGET calendar events, then the load of planned workouts.",
     ...(weeksWithoutTarget > 0 && {
       hint: `${weeksWithoutTarget} of ${weekCount} weeks have no target yet (no TARGET event and no planned workouts with load). Their columns stay empty until the plan is created.`,
     }),
@@ -202,6 +180,6 @@ export async function computeWeeklyTracker(opts: WeeklyTrackerOptions, today: st
     },
     weeks,
     chart_hint:
-      "Vertical columns on a weekly time axis, the previous week (position -1) first on the left, then the current week (position 0, highlight it), then the following weeks. Fill each column with actual_tss_by_sport as colour segments (swim, bike, run); draw target_tss as an outline or marker on every week that has one (future weeks show only the target) and put other_tss_not_counted in a separate grey segment. Weeks without a target are drawn empty, without comment on the chart. For the current week add the daily cumulative_tss profile and tss_per_day_needed.",
+      "Vertical columns on a weekly time axis, the previous week (position -1) first on the left, then the current week (position 0, highlight it), then the following weeks. Fill each column with actual_tss_by_sport as colour segments (swim, bike, run, strength); draw target_tss as an outline or marker on every week that has one (future weeks show only the target). Weeks without a target are drawn empty, without comment on the chart. For the current week add the daily cumulative_tss profile and tss_per_day_needed.",
   };
 }

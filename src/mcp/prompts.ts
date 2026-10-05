@@ -100,21 +100,21 @@ ${PROMPT_SUFFIX}`,
   );
 
   server.prompt(
-    "weekly_load_tracker",
-    "Tracker TSS: la settimana precedente, quella attuale e i prossimi 3 mesi in colonne settimanali; nuoto, bici e corsa si sommano ogni giorno contro il target",
+    "load_tracker",
+    "Load Tracker: TSS settimanale della settimana precedente, di quella attuale e dei prossimi 3 mesi; nuoto, bici, corsa e palestra si sommano ogni giorno contro il target",
     async () => ({
       messages: [
         {
           role: "user" as const,
           content: {
             type: "text" as const,
-            text: `Tracker del carico settimanale (TSS), oggi è ${today()}.
+            text: `Load Tracker, oggi è ${today()}.
 
-1. Chiama get_weekly_load_tracker con i valori predefiniti (settimana precedente, attuale e le 11 successive).
-2. Disegna il grafico seguendo chart_hint: colonne verticali: la prima è la settimana precedente, poi l'attuale (da evidenziare), poi le successive. Segmenti colorati con actual_tss_by_sport (nuoto, bici, corsa) e legenda, target_tss come contorno o marcatore, other_tss_not_counted in grigio separato. Le settimane senza target (target_tss null) restano vuote: è normale quando il piano non è ancora stato creato, non chiedere i valori e non inventarli. Per la settimana attuale aggiungi il profilo giornaliero (cumulative_tss) e i TSS al giorno che servono per chiuderla (tss_per_day_needed).
-3. Sotto il grafico, al massimo tre righe: stato della settimana attuale rispetto ai giorni trascorsi, quante settimane sono ancora senza target, e l'attività non conteggiata solo se rilevante.
+1. Chiama get_load_tracker con i valori predefiniti (settimana precedente, attuale e le 11 successive).
+2. Disegna il grafico seguendo chart_hint: colonne verticali impilate, la prima è la settimana precedente, poi l'attuale (da evidenziare), poi le successive. Segmenti colorati con actual_tss_by_sport (nuoto, bici, corsa, palestra) e legenda, target_tss come contorno o marcatore. Le settimane senza target (target_tss null) restano vuote: è normale quando il piano non è ancora stato creato, non chiedere i valori e non inventarli. Per la settimana attuale aggiungi il profilo giornaliero (cumulative_tss) e i TSS al giorno che servono per chiuderla (tss_per_day_needed).
+3. Sotto il grafico, al massimo tre righe: stato della settimana attuale rispetto ai giorni trascorsi e quante settimane sono ancora senza target.
 
-Non fare valutazioni di rischio o consigli di allenamento: questo è un tracker, non un'analisi. Non usare il recovery index. No emoji.`,
+Conta solo nuoto, bici, corsa e palestra: ogni altra attività è rumore e vale 0, non menzionarla. Non fare valutazioni di rischio o consigli di allenamento: questo è un tracker, non un'analisi. Non usare il recovery index. No emoji.`,
           },
         },
       ],
