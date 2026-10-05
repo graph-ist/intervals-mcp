@@ -212,11 +212,11 @@ export function registerAnalysisTools(server: McpServer): void {
   // --- get_weekly_load_tracker ---
   server.tool(
     "get_weekly_load_tracker",
-    "Weekly TSS tracker on a window centered on the current week: by default the 6 weeks before (42 days), the current week and the 6 weeks after (Monday to Sunday). For each week returns the TSS target (sum of planned workout load in the calendar, or manual 'targets'), the TSS done split by swim, bike, run and strength (WeightTraining/Workout/CrossFit), completion %, remaining TSS, and for the current week the per-day cumulative TSS so its column can be filled day by day. Other activity types (Hike, Yoga, Pilates, ...) are reported separately as other_tss_not_counted. Render it as stacked columns on a time axis with the current week in the center (see chart_hint in the response).",
+    "Weekly TSS tracker for the next 12 weeks (about 3 months, Monday to Sunday), the first column always being the current week. Only swim, bike and run count; every other activity (strength, Hike, Yoga, ...) is reported separately as other_tss_not_counted. For each week returns the TSS target (manual 'targets', else the weekly TARGET calendar event, else the sum of planned workout load), the TSS done split by swim, bike and run, completion %, remaining TSS, and for the current week the per-day cumulative TSS so its column can be filled day by day. Weeks without a target have target_tss null (empty column). Render it as vertical columns (see chart_hint in the response).",
     {
-      weeks_before: z.number().int().min(0).max(26).optional().describe("Weeks before the current one (default 6)"),
-      weeks_after: z.number().int().min(0).max(26).optional().describe("Weeks after the current one (default 6)"),
-      center: dateStr.optional().describe("Any date in the week to put at the center, YYYY-MM-DD (default today)"),
+      weeks_before: z.number().int().min(0).max(26).optional().describe("Weeks before the current one (default 0)"),
+      weeks_after: z.number().int().min(0).max(26).optional().describe("Weeks after the current one (default 11)"),
+      start: dateStr.optional().describe("Any date in the week that opens the window, YYYY-MM-DD (default today)"),
       targets: z
         .array(
           z.object({
@@ -226,12 +226,12 @@ export function registerAnalysisTools(server: McpServer): void {
         )
         .max(60)
         .optional()
-        .describe("Manual weekly TSS targets. They override the planned workout load for those weeks"),
+        .describe("Manual weekly TSS targets. They override TARGET events and planned workout load"),
     },
-    async ({ weeks_before, weeks_after, center, targets }) => {
+    async ({ weeks_before, weeks_after, start, targets }) => {
       try {
         const result = await computeWeeklyTracker(
-          { weeksBefore: weeks_before, weeksAfter: weeks_after, center, targets },
+          { weeksBefore: weeks_before, weeksAfter: weeks_after, start, targets },
           today(),
         );
         return safeReturn(result);

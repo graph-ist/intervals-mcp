@@ -14,7 +14,8 @@ describe("sportGroup", () => {
     expect(sportGroup("GravelRide")).toBe("bike");
     expect(sportGroup("TrailRun")).toBe("run");
     expect(sportGroup("OpenWaterSwim")).toBe("swim");
-    expect(sportGroup("WeightTraining")).toBe("strength");
+    expect(sportGroup("WeightTraining")).toBe("other");
+    expect(sportGroup("Hike")).toBe("other");
     expect(sportGroup("Yoga")).toBe("other");
     expect(sportGroup(undefined)).toBe("other");
   });
@@ -38,7 +39,7 @@ describe("computeWeeklyTracker", () => {
       { start_date_local: "2026-10-07T08:00:00", type: "Run", icu_training_load: null },
     ] as never);
 
-    const r = await computeWeeklyTracker({ weeksBefore: 0, weeksAfter: 1, center: "2026-10-07" }, "2026-10-07");
+    const r = await computeWeeklyTracker({ weeksBefore: 0, weeksAfter: 1, start: "2026-10-07" }, "2026-10-07");
 
     expect(r.range).toMatchObject({ from: "2026-10-05", to: "2026-10-18" });
     const [w1, w2] = r.weeks;
@@ -47,34 +48,54 @@ describe("computeWeeklyTracker", () => {
       status: "current",
       target_tss: 140,
       target_source: "planned_events",
-      actual_tss: 135,
+      actual_tss: 110,
     });
-    expect(w1.actual_tss_by_sport).toEqual({ swim: 40, bike: 70, run: 0, strength: 25 });
-    expect(w1.other_tss_not_counted).toBe(10);
-    expect(w1.completion_pct).toBe(96.4);
-    expect(w1.remaining_tss).toBe(5);
+    expect(w1.actual_tss_by_sport).toEqual({ swim: 40, bike: 70, run: 0 });
+    expect(w1.other_tss_not_counted).toBe(35);
+    expect(w1.completion_pct).toBe(78.6);
+    expect(w1.remaining_tss).toBe(30);
     expect(w1.days_left_including_today).toBe(5);
-    expect(w1.days?.map((d) => d.cumulative_tss)).toEqual([40, 135, 135, 135, 135, 135, 135]);
+    expect(w1.days?.map((d) => d.cumulative_tss)).toEqual([40, 110, 110, 110, 110, 110, 110]);
     expect(w2).toMatchObject({ position: 1, status: "future", target_tss: 50, actual_tss: 0 });
     expect(w2.days).toBeUndefined();
     expect(r.hint).toBeUndefined();
   });
 
-  it("centers the window on the current week with 6 weeks before and after by default", async () => {
+  it("opens on the current week and covers 12 weeks by default", async () => {
     vi.mocked(icu.getEvents).mockResolvedValue([]);
-    vi.mocked(icu.getActivities).mockResolvedValue([
-      { start_date_local: "2026-09-02T07:00:00", type: "Run", icu_training_load: 55 },
-    ] as never);
+    vi.mocked(icu.getActivities).mockResolvedValue([]);
 
     const r = await computeWeeklyTracker({}, "2026-10-07");
 
-    expect(r.weeks).toHaveLength(13);
-    expect(r.weeks[0]).toMatchObject({ week_start: "2026-08-24", position: -6, status: "past" });
-    expect(r.weeks[6]).toMatchObject({ week_start: "2026-10-05", position: 0, status: "current" });
-    expect(r.weeks[12]).toMatchObject({ week_start: "2026-11-16", position: 6, status: "future" });
-    expect(r.weeks[1].actual_tss_by_sport.run).toBe(55);
+    expect(r.weeks).toHaveLength(12);
+    expect(r.weeks[0]).toMatchObject({ week_start: "2026-10-05", position: 0, status: "current" });
+    expect(r.weeks[11]).toMatchObject({ week_start: "2026-12-21", position: 11, status: "future" });
     expect(r.weeks[1].days).toBeUndefined();
-    expect(vi.mocked(icu.getActivities).mock.calls[0].slice(0, 2)).toEqual(["2026-08-24", "2026-11-22"]);
+    expect(vi.mocked(icu.getActivities).mock.calls[0].slice(0, 2)).toEqual(["2026-10-05", "2026-12-27"]);
+    expect(vi.mocked(icu.getEvents).mock.calls[0][2]).toBe("WORKOUT,TARGET");
+  });
+
+  it("reads weekly TARGET events and ranks them between manual targets and planned workouts", async () => {
+    vi.mocked(icu.getEvents).mockResolvedValue([
+      { id: 1, category: "TARGET", start_date_local: "2026-10-05T00:00:00", load_target: 310 },
+      { id: 2, category: "WORKOUT", start_date_local: "2026-10-07T00:00:00", type: "Ride", load_target: 90 },
+      { id: 3, category: "WORKOUT", start_date_local: "2026-10-14T00:00:00", type: "Ride", load_target: 90 },
+      { id: 4, category: "TARGET", start_date_local: "2026-10-19T00:00:00", load_target: 325 },
+    ]);
+    vi.mocked(icu.getActivities).mockResolvedValue([]);
+
+    const r = await computeWeeklyTracker(
+      { weeksAfter: 3, targets: [{ week_start: "2026-10-19", tss: 400 }] },
+      "2026-10-05",
+    );
+
+    expect(r.weeks.map((w) => [w.target_tss, w.target_source])).toEqual([
+      [310, "target_event"],
+      [90, "planned_events"],
+      [400, "manual"],
+      [null, "none"],
+    ]);
+    expect(r.weeks[0].planned_tss_by_sport.bike).toBe(90);
   });
 
   it("uses manual targets by date and flags weeks without any target", async () => {
@@ -104,7 +125,7 @@ describe("computeWeeklyTracker", () => {
     vi.mocked(icu.getEvents).mockResolvedValue([]);
     vi.mocked(icu.getActivities).mockResolvedValue([]);
 
-    const r = await computeWeeklyTracker({ weeksBefore: 99, weeksAfter: 99, center: "2026-10-11" }, "2026-10-11");
+    const r = await computeWeeklyTracker({ weeksBefore: 99, weeksAfter: 99, start: "2026-10-11" }, "2026-10-11");
 
     expect(r.weeks).toHaveLength(53);
     expect(r.weeks[26]).toMatchObject({ week_start: "2026-10-05", week_end: "2026-10-11", position: 0 });
