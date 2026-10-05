@@ -212,9 +212,9 @@ export function registerAnalysisTools(server: McpServer): void {
   // --- get_weekly_load_tracker ---
   server.tool(
     "get_weekly_load_tracker",
-    "Weekly TSS tracker for the next 12 weeks (about 3 months, Monday to Sunday), the first column always being the current week. Only swim, bike and run count; every other activity (strength, Hike, ...) is reported separately as other_tss_not_counted. Loads are weighted with the athlete's Activity Types settings (fitness %), so Yoga and Pilates at 0% do not appear. For each week returns the TSS target (manual 'targets', else the weekly TARGET calendar event, else the sum of planned workout load), the TSS done split by swim, bike and run, completion %, remaining TSS, and for the current week the per-day cumulative TSS so its column can be filled day by day. Weeks without a target have target_tss null (empty column). Render it as vertical columns (see chart_hint in the response).",
+    "Weekly TSS tracker (Monday to Sunday): the previous week, the current week and the next 11 weeks (about 3 months), always in this order. Only swim, bike and run count; every other activity (strength, Hike, ...) is reported separately as other_tss_not_counted. Loads are weighted with the athlete's Activity Types settings (fitness %), so Yoga and Pilates at 0% do not appear. For each week returns the TSS target (manual 'targets', else the weekly TARGET calendar event, else the sum of planned workout load), the TSS done split by swim, bike and run, completion %, remaining TSS, and for the current week the per-day cumulative TSS so its column can be filled day by day. Weeks without a target have target_tss null (empty column). Render it as vertical columns (see chart_hint in the response).",
     {
-      weeks_before: z.number().int().min(0).max(26).optional().describe("Weeks before the current one (default 0)"),
+      weeks_before: z.number().int().min(0).max(26).optional().describe("Weeks before the current one (default 1)"),
       weeks_after: z.number().int().min(0).max(26).optional().describe("Weeks after the current one (default 11)"),
       start: dateStr.optional().describe("Any date in the week that opens the window, YYYY-MM-DD (default today)"),
       targets: z

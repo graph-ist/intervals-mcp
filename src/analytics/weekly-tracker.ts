@@ -45,9 +45,9 @@ function roundTotals(t: SportTotals): SportTotals {
 }
 
 export type WeeklyTrackerOptions = {
-  /** Weeks before the current one (default 0, max 26). */
+  /** Weeks before the current one (default 1, max 26). */
   weeksBefore?: number;
-  /** Weeks after the current one (default 11, so the window is 12 weeks, max 26). */
+  /** Weeks after the current one (default 11, max 26). */
   weeksAfter?: number;
   /** Any date inside the week that opens the window, YYYY-MM-DD (default: today). */
   start?: string;
@@ -58,7 +58,7 @@ export type WeeklyTrackerOptions = {
 const clampWeeks = (n: number | undefined, fallback: number) => Math.min(Math.max(Math.floor(n ?? fallback), 0), 26);
 
 export async function computeWeeklyTracker(opts: WeeklyTrackerOptions, today: string) {
-  const before = clampWeeks(opts.weeksBefore, 0);
+  const before = clampWeeks(opts.weeksBefore, 1);
   const after = clampWeeks(opts.weeksAfter, 11);
   const weekCount = before + 1 + after;
   const startMonday = mondayOf(opts.start ?? today);
@@ -202,6 +202,6 @@ export async function computeWeeklyTracker(opts: WeeklyTrackerOptions, today: st
     },
     weeks,
     chart_hint:
-      "Vertical columns on a weekly time axis, the current week (position 0) first on the left, then the following weeks. Fill each column with actual_tss_by_sport as colour segments (swim, bike, run); draw target_tss as an outline or marker on every week that has one (future weeks show only the target) and put other_tss_not_counted in a separate grey segment. Weeks without a target are drawn empty, without comment on the chart. For the current week add the daily cumulative_tss profile and tss_per_day_needed.",
+      "Vertical columns on a weekly time axis, the previous week (position -1) first on the left, then the current week (position 0, highlight it), then the following weeks. Fill each column with actual_tss_by_sport as colour segments (swim, bike, run); draw target_tss as an outline or marker on every week that has one (future weeks show only the target) and put other_tss_not_counted in a separate grey segment. Weeks without a target are drawn empty, without comment on the chart. For the current week add the daily cumulative_tss profile and tss_per_day_needed.",
   };
 }

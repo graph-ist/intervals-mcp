@@ -101,7 +101,7 @@ ${PROMPT_SUFFIX}`,
 
   server.prompt(
     "weekly_load_tracker",
-    "Tracker TSS: i prossimi 3 mesi in colonne settimanali, la prima è la settimana attuale; nuoto, bici e corsa si sommano ogni giorno contro il target",
+    "Tracker TSS: la settimana precedente, quella attuale e i prossimi 3 mesi in colonne settimanali; nuoto, bici e corsa si sommano ogni giorno contro il target",
     async () => ({
       messages: [
         {
@@ -110,8 +110,8 @@ ${PROMPT_SUFFIX}`,
             type: "text" as const,
             text: `Tracker del carico settimanale (TSS), oggi è ${today()}.
 
-1. Chiama get_weekly_load_tracker con i valori predefiniti (12 settimane da quella attuale).
-2. Disegna il grafico seguendo chart_hint: colonne verticali, la prima è la settimana attuale, poi le successive. Segmenti colorati con actual_tss_by_sport (nuoto, bici, corsa) e legenda, target_tss come contorno o marcatore, other_tss_not_counted in grigio separato. Le settimane senza target (target_tss null) restano vuote: è normale quando il piano non è ancora stato creato, non chiedere i valori e non inventarli. Per la settimana attuale aggiungi il profilo giornaliero (cumulative_tss) e i TSS al giorno che servono per chiuderla (tss_per_day_needed).
+1. Chiama get_weekly_load_tracker con i valori predefiniti (settimana precedente, attuale e le 11 successive).
+2. Disegna il grafico seguendo chart_hint: colonne verticali: la prima è la settimana precedente, poi l'attuale (da evidenziare), poi le successive. Segmenti colorati con actual_tss_by_sport (nuoto, bici, corsa) e legenda, target_tss come contorno o marcatore, other_tss_not_counted in grigio separato. Le settimane senza target (target_tss null) restano vuote: è normale quando il piano non è ancora stato creato, non chiedere i valori e non inventarli. Per la settimana attuale aggiungi il profilo giornaliero (cumulative_tss) e i TSS al giorno che servono per chiuderla (tss_per_day_needed).
 3. Sotto il grafico, al massimo tre righe: stato della settimana attuale rispetto ai giorni trascorsi, quante settimane sono ancora senza target, e l'attività non conteggiata solo se rilevante.
 
 Non fare valutazioni di rischio o consigli di allenamento: questo è un tracker, non un'analisi. Non usare il recovery index. No emoji.`,

@@ -67,17 +67,20 @@ describe("computeWeeklyTracker", () => {
     expect(r.hint).toBeUndefined();
   });
 
-  it("opens on the current week and covers 12 weeks by default", async () => {
+  it("opens on the previous week and covers 13 weeks by default", async () => {
     vi.mocked(icu.getEvents).mockResolvedValue([]);
     vi.mocked(icu.getActivities).mockResolvedValue([]);
 
     const r = await computeWeeklyTracker({}, "2026-10-07");
 
-    expect(r.weeks).toHaveLength(12);
-    expect(r.weeks[0]).toMatchObject({ week_start: "2026-10-05", position: 0, status: "current" });
-    expect(r.weeks[11]).toMatchObject({ week_start: "2026-12-21", position: 11, status: "future" });
-    expect(r.weeks[1].days).toBeUndefined();
-    expect(vi.mocked(icu.getActivities).mock.calls[0].slice(0, 2)).toEqual(["2026-10-05", "2026-12-27"]);
+    expect(r.weeks).toHaveLength(13);
+    expect(r.weeks[0]).toMatchObject({ week_start: "2026-09-28", position: -1, status: "past" });
+    expect(r.weeks[1]).toMatchObject({ week_start: "2026-10-05", position: 0, status: "current" });
+    expect(r.weeks[12]).toMatchObject({ week_start: "2026-12-21", position: 11, status: "future" });
+    expect(r.weeks[0].days).toBeUndefined();
+    expect(r.weeks[1].days).toHaveLength(7);
+    expect(r.weeks[2].days).toBeUndefined();
+    expect(vi.mocked(icu.getActivities).mock.calls[0].slice(0, 2)).toEqual(["2026-09-28", "2026-12-27"]);
     expect(vi.mocked(icu.getEvents).mock.calls[0][2]).toBe("WORKOUT,TARGET");
   });
 
@@ -91,7 +94,7 @@ describe("computeWeeklyTracker", () => {
     vi.mocked(icu.getActivities).mockResolvedValue([]);
 
     const r = await computeWeeklyTracker(
-      { weeksAfter: 3, targets: [{ week_start: "2026-10-19", tss: 400 }] },
+      { weeksBefore: 0, weeksAfter: 3, targets: [{ week_start: "2026-10-19", tss: 400 }] },
       "2026-10-05",
     );
 
