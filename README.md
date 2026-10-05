@@ -3,7 +3,7 @@
 [![CI](https://github.com/graph-ist/intervals-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/graph-ist/intervals-mcp/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-MCP server for [intervals.icu](https://intervals.icu). It exposes 145 tools covering the whole documented public API (except the OAuth-only `disconnect-app` endpoint), including eight physiological analysis tools, and three prompts.
+MCP server for [intervals.icu](https://intervals.icu). It exposes 146 tools covering the whole documented public API (except the OAuth-only `disconnect-app` endpoint), including nine analysis tools, and three prompts.
 
 Two transports are provided: stdio for local clients such as Claude Desktop, and Streamable HTTP for remote clients such as claude.ai custom connectors.
 
@@ -68,7 +68,7 @@ The server is a plain Node.js 22 process. A public HTTPS endpoint is needed only
 | `UPLOAD_DIR` | No | | HTTP only: directory from which `upload_activity` may read local files. Without it, remote uploads accept only `file_base64` |
 | `PORT` | No | `3001` | HTTP port (`npm run serve` only) |
 
-## Tools (145)
+## Tools (146)
 
 ### Athlete and settings
 
@@ -158,6 +158,7 @@ Custom tools that compute physiological models on top of the API data. Formulas,
 | `get_fatigue_resistance` | Durability: fresh vs fatigued power curves, Fatigue Resistance Score, VO₂max retention (Maunder et al., 2021). Requires the kJ threshold `after_kj0` in the sport settings |
 | `get_polarization_analysis` | Time in zones, polarization index, comparison with the 80/20 model (Seiler, 2010; Stöggl & Sperlich, 2015) |
 | `get_longitudinal_trends` | Regression on EF, power, HRR, decoupling, CTL, HRV, resting HR, weight and sleep |
+| `get_weekly_load_tracker` | Weekly TSS tracker for the next weeks (default 6, Monday to Sunday): target per week (planned workout load or manual `targets`), TSS done split by swim, bike, run and strength, completion %, remaining TSS and a per-day cumulative breakdown, ready to be drawn as one filling bar per week |
 
 Which tool answers which question:
 
@@ -170,6 +171,7 @@ Which tool answers which question:
 | Am I improving or declining? | `get_longitudinal_trends` |
 | Is my training well polarized? | `get_polarization_analysis` |
 | How well do I hold power under fatigue? | `get_fatigue_resistance` |
+| Am I on track with the weekly TSS I planned? | `get_weekly_load_tracker` |
 
 `get_dfa_alpha1` (aerobic and anaerobic thresholds from DFA α1, Rogers et al., 2021) is implemented in [src/analytics/dfa-alpha1.ts](src/analytics/dfa-alpha1.ts), but its registration is commented out in [src/mcp/tools/analysis.ts](src/mcp/tools/analysis.ts) because it needs beat-to-beat RR data from a chest strap. To enable it, uncomment the registration and the import of `computeDfaAnalysis`, and raise the expected tool count in the server test.
 
@@ -309,7 +311,8 @@ src/
     ├── recovery.ts             # composite recovery index
     ├── training-load.ts        # monotony, strain, ACWR
     ├── trends.ts               # longitudinal trends and HRR
-    └── utils.ts                # shared helpers (stream extraction, sport matching)
+    ├── utils.ts                # shared helpers (stream extraction, sport matching)
+    └── weekly-tracker.ts       # weekly TSS target vs done, per sport and day
 docs/
 └── MODELS.md           # mathematical models and literature (Italian)
 ```

@@ -8,7 +8,8 @@ import { computePolarization } from "../../analytics/polarization.js";
 import { computeRecoveryIndex } from "../../analytics/recovery.js";
 import { computeTrainingLoadRisk } from "../../analytics/training-load.js";
 import { computeTrends } from "../../analytics/trends.js";
-import { daysAgo, safeReturn, today, toolError } from "../helpers.js";
+import { computeWeeklyTracker } from "../../analytics/weekly-tracker.js";
+import { dateStr, daysAgo, safeReturn, today, toolError } from "../helpers.js";
 
 export function registerAnalysisTools(server: McpServer): void {
   // --- get_training_load_risk ---
@@ -201,6 +202,37 @@ export function registerAnalysisTools(server: McpServer): void {
         const result = await computeTrends(days ?? 90, sport ?? "Ride");
         if (!result) return toolError("Insufficient data for trend analysis (need ≥ 3 data points).");
         return safeReturn(result);
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        return toolError(`API error: ${msg}`);
+      }
+    },
+  );
+
+  // --- get_weekly_load_tracker ---
+  server.tool(
+    "get_weekly_load_tracker",
+    "Weekly TSS tracker for the next weeks (default 6, Monday to Sunday). For each week returns the TSS target (sum of planned workout load in the calendar, or manual targets passed in 'targets'), the TSS done so far split by swim, bike, run and strength (WeightTraining/Workout/CrossFit), completion %, remaining TSS, and the per-day breakdown with cumulative TSS so that a bar per week can be filled day by day. Yoga, Pilates and other types are reported separately and not counted. Render it as one stacked horizontal bar per week against its target (see chart_hint in the response).",
+    {
+      weeks: z
+        .number()
+        .int()
+        .min(1)
+        .max(26)
+        .optional()
+        .describe("Number of weeks, from the week containing 'start' (default 6)"),
+      start: dateStr.optional().describe("Any date in the first week, YYYY-MM-DD (default today)"),
+      targets: z
+        .array(z.number().min(0))
+        .max(26)
+        .optional()
+        .describe(
+          "Manual weekly TSS targets, first entry = first week. Overrides planned workout load for those weeks",
+        ),
+    },
+    async ({ weeks, start, targets }) => {
+      try {
+        return safeReturn(await computeWeeklyTracker({ weeks, start, targets }, today()));
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
         return toolError(`API error: ${msg}`);
