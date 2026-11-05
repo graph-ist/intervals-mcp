@@ -2,13 +2,16 @@
 
 ## Order of authority
 
-1. `interpretation_guidance.decision_rules` (recovery) and the protocol rules in this skill decide what to do.
-2. `reference_ranges` describe the state of a value: report the label and its meaning.
-3. General knowledge comes last and never overrides 1 or 2.
+1. intervals.icu values (readiness, CTL, ATL, TSB, ramp rate, HRV, resting HR, zones, efficiency factor, decoupling) are the reference. The server's own indices complement them and never replace them.
+2. The protocol rules in this skill decide what to do; for daily readiness that is the [readiness rule](readiness-rule.md).
+3. `reference_ranges` describe the state of a value: report the label and its meaning.
+4. General knowledge comes last and never overrides the above.
+
+`get_recovery_index` returns its own `interpretation_guidance` with decision rules on the Recovery Index. Those rules are not the basis for decisions here: use the readiness rule, and take from `get_recovery_index` only the severe flags and which metric moved.
 
 ## Thresholds
 
-Recovery index bands and decision rules use the same cut points: 80, 55 and 40. The label describes the day; a change to the plan still needs the multi-day pattern, except below 40. SpO₂ appears in `red_flags` only below 93%; 93-94% is labelled low in `reference_ranges` and is watched, not acted on.
+Recovery Index bands use the cut points 80, 55 and 40; when the RI is reported, give its label as a secondary index. SpO₂ appears in `red_flags` only below 93%; 93-94% is labelled low in `reference_ranges` and is watched, not acted on.
 
 ## Z-scores
 

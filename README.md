@@ -269,7 +269,7 @@ Available through the prompt picker in claude.ai and Claude Desktop.
 
 | Prompt | When | What it does |
 |---|---|---|
-| `morning_check` | Morning | Red-flag scan: decides whether anything justifies deviating from the weekly plan. A recovery index between 55 and 80 without anomalies means executing the plan |
+| `morning_check` | Morning | Readiness scan on intervals.icu values: 7-day means of readiness, HRV and resting HR against a 60-day normal band, plus TSB, give one of four sentences (the same rule as the training dashboard). Only severe flags from `get_recovery_index` (HRV or resting HR z below −2, SpO₂ below 93%) add an exception |
 | `weekly_review` | Sunday evening | Primary decision tool: review of the past week and planning of the next one, with explicit exception criteria |
 | `activity_review` | After a session | Finds the latest Ride, Run or Swim and analyses metrics, zones, pacing, decoupling and dFRC |
 | `load_tracker` | Any time | Calls `get_load_tracker` and draws weekly columns for the previous week, the current one and the next 11, filled with the TSS done in swim, bike, run and gym against the target. Weeks without a target stay empty |

@@ -5,30 +5,46 @@ export function registerPrompts(server: McpServer): void {
   const PROMPT_SUFFIX =
     "Interpreta ogni valore usando i reference_ranges della risposta — indica la fascia e il significato per l'atleta. No emoji.";
 
+  // The readiness rule follows intervals.icu values and matches the training dashboard; keep it identical to
+  // skills/intervals-coach/references/readiness-rule.md
+  const READINESS_RULE = `Per readiness, HRV e FC a riposo di intervals.icu, riferite all'ultimo giorno con dati (indica la data):
+- media degli ultimi 7 giorni, quel giorno compreso (almeno 4 valori, altrimenti "dato insufficiente");
+- fascia normale: media dei 60 giorni precedenti, quel giorno escluso, più o meno metà della deviazione standard campionaria (almeno 30 valori, altrimenti nessuna fascia);
+- posizione della media a 7 giorni: sotto, nella fascia, sopra.
+TSB = CTL − ATL dell'ultimo giorno.
+
+Regola, in ordine, decide la prima che vale:
+1. HRV sotto e FC a riposo sopra la fascia: "oggi tieni l'intensità bassa".
+2. TSB sotto −30: "la fatica accumulata è alta: valuta un giorno di scarico".
+3. Almeno un segnale fuori fascia (HRV sotto, FC a riposo sopra o readiness sotto): "segui il piano senza aggiungere intensità".
+4. Altrimenti: "nessun segnale contrario al piano di oggi".`;
+
   server.prompt(
     "morning_check",
-    "Check mattutino: red-flag scanner rapido — verifica se ci sono motivi per scostare dal piano settimanale",
+    "Check mattutino: confronta readiness, HRV e FC a riposo di intervals.icu con la loro fascia normale e dice se qualcosa giustifica uno scostamento dal piano settimanale",
     async () => ({
       messages: [
         {
           role: "user" as const,
           content: {
             type: "text" as const,
-            text: `Check mattutino rapido. Questo NON è uno strumento decisionale quotidiano — serve solo a identificare red-flag che giustificano uno scostamento dal piano settimanale già stabilito.
+            text: `Check mattutino rapido. Il riferimento sono i valori di intervals.icu. Non è uno strumento decisionale quotidiano: dice solo se qualcosa giustifica uno scostamento dal piano settimanale già stabilito.
 
-Regola operativa: se il Recovery Index è tra 55 e 80 e non ci sono anomalie multigiorno (≥3 giorni consecutivi di trend negativo su indicatori indipendenti), il piano settimanale si esegue come previsto. Il rumore giornaliero dell'HRV (±15-20% intra-individuale, Plews et al. 2012) NON è motivo per modificare la sessione.
+1. Chiama get_wellness_data con days=67 e fields ["id","readiness","hrv","restingHR","ctl","atl"].
+2. Applica la regola:
 
-Intervieni solo se:
-1. RI < 40 oggi
-2. Pattern multigiorno: ≥3 giorni consecutivi sotto baseline su ≥2 metriche indipendenti (autonomico + strutturale)
-3. Red flag singolo severo: HRV z < -2.0, RHR z < -2.0, SpO₂ < 93%
+${READINESS_RULE}
 
-Output richiesto:
-- RI di oggi con stato
-- Eventali red flag (se nessuna, scrivi "Nessuna anomalia — esegui il piano")
-- Solo se ci sono red flag: suggerimento di modifica specifico e reversibile
+3. Chiama get_recovery_index solo per gli allarmi gravi di oggi: HRV o FC a riposo con z-score sotto −2, SpO₂ sotto il 93%. Un allarme grave è l'unica eccezione che giustifica un cambio di seduta oltre alla regola; con SpO₂ sotto il 93% suggerisci di sentire un medico. Il Recovery Index è un indice di questo server, non di intervals: non usarlo per decidere e non riportarlo al posto della readiness.
 
-${PROMPT_SUFFIX}`,
+Output:
+- Data dei dati, readiness di oggi e TSB.
+- HRV, FC a riposo e readiness: media a 7 giorni, fascia normale, posizione.
+- La frase della regola.
+- Allarmi gravi, se ce ne sono.
+- Solo se la regola non è la 4 o c'è un allarme grave: una modifica specifica e reversibile della seduta di oggi.
+
+No emoji.`,
           },
         },
       ],
@@ -44,14 +60,14 @@ ${PROMPT_SUFFIX}`,
           role: "user" as const,
           content: {
             type: "text" as const,
-            text: `Review settimanale dal ${daysAgo(7)} al ${today()}.
+            text: `Review settimanale dal ${daysAgo(6)} al ${today()}.
 
 Questo è lo strumento PRIMARIO di decisione. Le scelte di volume, intensità e distribuzione si fanno qui, non nei check giornalieri.
 
 PARTE 1 — ANALISI SETTIMANA CONCLUSA:
 - Volume per sport (ore, km, TSS)
 - Carico: CTL/ATL/TSB trend, ACWR, Monotony/Strain
-- Recupero: RI medio della settimana, trend, giorni con red flag
+- Recupero, sui valori di intervals.icu: readiness, HRV e FC a riposo, con la media a 7 giorni e la fascia normale come nel morning_check, all'inizio e alla fine della settimana (chiama get_wellness_data con days=74 e fields ["id","readiness","hrv","restingHR","ctl","atl"]); allarmi gravi della settimana da get_recovery_index (HRV o FC a riposo con z sotto −2, SpO₂ sotto il 93%). Il Recovery Index non è un valore di intervals: non usarlo per decidere
 - Aderenza al piano: sessioni completate vs pianificate, scostamenti e motivi
 - Trend longitudinali: EF, HRR, potenza se disponibili
 
@@ -60,7 +76,7 @@ PARTE 2 — PIANIFICAZIONE PROSSIMA SETTIMANA:
 - Settimana di carico, mantenimento o scarico? Giustifica con i dati
 - Volume target (ore/TSS) e distribuzione intensità (polarizzata: 80/20 o piramidale)
 - Sessioni chiave raccomandate con obiettivo fisiologico
-- Criteri di intervento giornaliero: definisci soglie specifiche per questa settimana che giustificherebbero uno scostamento dal piano (es. "se RI < 45 per 2+ giorni, sostituire la Z4 di giovedì con Z2")
+- Criteri di intervento giornaliero: definisci soglie specifiche per questa settimana che giustificherebbero uno scostamento dal piano (es. "se il morning_check dà 'intensità bassa' per 2 o più giorni, sostituire la Z4 di giovedì con Z2")
 
 Principio guida: la varianza giornaliera è rumore (Plews et al. 2012). Solo pattern multigiorno su indicatori indipendenti sono segnale. I check giornalieri servono solo come trigger per eccezioni definite qui.
 

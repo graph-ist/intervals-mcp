@@ -9,13 +9,14 @@ These protocols sit on top of the intervals-mcp tools. Tool names below are the 
 
 ## Principles
 
-1. **The week is the decision unit.** Volume, intensity and distribution are decided in the weekly review. Daily checks only look for exceptions that the weekly review defined in advance. Never turn a single day's recovery index into a training prescription.
-2. **Daily variance is noise.** HRV varies by ±15-20% within an individual at stable load (Plews et al., 2012). Signal means a multi-day pattern (≥3 consecutive days) converging across independent metrics (autonomic: HRV, resting HR, Baevsky SI; structural or subjective: sleep, soreness, fatigue).
-3. **Interpret with the response, not from memory.** Analysis tools return `reference_ranges` and, for recovery, `interpretation_guidance`. For every number reported, state its range label and what it means for the athlete. Where range labels and decision rules disagree, the decision rules win: see [references/interpretation.md](references/interpretation.md).
-4. **Missing data stays missing.** If a tool says data is insufficient, or a field is null (no target, no power, no subjective wellness), say so and continue with what exists. Do not estimate, ask the user to make up values, or fill gaps with typical numbers.
-5. **Writes need an explicit yes.** Analysis is read-only. Creating or changing calendar events, plans, wellness or settings happens only after the user has seen the exact change and agreed to it in this conversation. Propose changes that are specific and reversible (swap a Z4 session for Z2, not "rest more").
-6. **Not medical advice.** Values the ranges mark as clinical (SpO₂ below 93%, blood pressure stage 2, persistent resting-HR elevation with illness symptoms) are reported with the suggestion to consult a doctor, without diagnosis.
-7. **Style.** Reply in the user's language. No emoji. Lead with the decision or the state, then the evidence. Keep a morning check to a few lines.
+1. **intervals.icu is the reference.** Its values (readiness, CTL, ATL, TSB, HRV, resting HR, zones, efficiency factor, decoupling) come first. The server's own indices (Recovery Index, ACWR, monotony, polarization, durability) fill what intervals.icu does not show; they never replace or contradict an intervals.icu value. Daily readiness follows one rule, the [readiness rule](references/readiness-rule.md), shared with the training dashboard.
+2. **The week is the decision unit.** Volume, intensity and distribution are decided in the weekly review. Daily checks only look for exceptions that the weekly review defined in advance. Never turn a single day's value into a training prescription.
+3. **Daily variance is noise.** HRV varies by ±15-20% within an individual at stable load (Plews et al., 2012). The readiness rule therefore compares 7-day means, not single days, with a 60-day normal band.
+4. **Interpret with the response, not from memory.** Analysis tools return `reference_ranges` and, for recovery, `interpretation_guidance`. For every number reported, state its range label and what it means for the athlete. The order of authority is in [references/interpretation.md](references/interpretation.md).
+5. **Missing data stays missing.** If a tool says data is insufficient, or a field is null (no target, no power, no subjective wellness), say so and continue with what exists. Do not estimate, ask the user to make up values, or fill gaps with typical numbers.
+6. **Writes need an explicit yes.** Analysis is read-only. Creating or changing calendar events, plans, wellness or settings happens only after the user has seen the exact change and agreed to it in this conversation. Propose changes that are specific and reversible (swap a Z4 session for Z2, not "rest more").
+7. **Not medical advice.** Values the ranges mark as clinical (SpO₂ below 93%, blood pressure stage 2, persistent resting-HR elevation with illness symptoms) are reported with the suggestion to consult a doctor, without diagnosis.
+8. **Style.** Reply in the user's language. No emoji. Lead with the decision or the state, then the evidence. Keep a morning check to a few lines.
 
 ## Which protocol
 
