@@ -276,6 +276,19 @@ Available through the prompt picker in claude.ai and Claude Desktop.
 
 The prompt texts are written in Italian.
 
+## Skill
+
+[skills/intervals-coach](skills/intervals-coach) is an Agent Skill that carries the coaching protocols behind the four prompts: when to deviate from the weekly plan, which tools each protocol calls, how to read `reference_ranges` and `interpretation_guidance`, and when calendar writes need the user's confirmation. It loads only when a request is about training, so the protocols do not weigh on every conversation the way tool descriptions do.
+
+- **Claude Code**: copy the folder to `~/.claude/skills/intervals-coach/` (all projects) or `.claude/skills/intervals-coach/` (one project).
+- **claude.ai and Claude Desktop**: zip the `intervals-coach` folder and upload it as a custom skill in the app's skills settings.
+
+```bash
+cd skills && zip -r intervals-coach.zip intervals-coach
+```
+
+The skill and the prompts state the same rules; when one changes, update the other.
+
 ## Development
 
 ```bash
