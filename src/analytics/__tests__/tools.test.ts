@@ -433,3 +433,35 @@ describe("computeTrends with real fields", () => {
     expect(names).toContain("Heart Rate Recovery");
   });
 });
+
+// ─── Recovery thresholds ────────────────────────────────────
+
+describe("recovery thresholds", () => {
+  it("uses the same cut points as the decision rules", async () => {
+    const { recoveryStatus } = await import("../recovery.js");
+    expect(recoveryStatus(80)).toBe("Recovered");
+    expect(recoveryStatus(79)).toBe("Moderate");
+    expect(recoveryStatus(55)).toBe("Moderate");
+    expect(recoveryStatus(54)).toBe("Strained");
+    expect(recoveryStatus(40)).toBe("Strained");
+    expect(recoveryStatus(39)).toBe("At risk");
+  });
+
+  it("flags SpO2 only below 93%", async () => {
+    const base = Array.from({ length: 45 }, (_, i) => ({
+      id: daysAgo(45 - i),
+      hrv: 45 + Math.sin(i) * 5,
+      restingHR: 52 + Math.cos(i) * 3,
+      sleepSecs: 7 * 3600,
+      spO2: 97 + Math.sin(i) * 0.5,
+    }));
+    const spo2Flags = async (last: number) => {
+      const data = base.map((d, i) => (i === base.length - 1 ? { ...d, spO2: last } : d));
+      vi.mocked(icu.getWellness).mockResolvedValue(data);
+      const result = await computeRecoveryIndex(30, daysAgo, today);
+      return (result!.today.red_flags ?? []).filter((f: string) => f.startsWith("SpO₂"));
+    };
+    expect(await spo2Flags(94)).toHaveLength(0);
+    expect(await spo2Flags(92)).toHaveLength(1);
+  });
+});

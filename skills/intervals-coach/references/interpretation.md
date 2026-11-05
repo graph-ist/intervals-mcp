@@ -6,15 +6,9 @@
 2. `reference_ranges` describe the state of a value: report the label and its meaning.
 3. General knowledge comes last and never overrides 1 or 2.
 
-## Known disagreements between ranges and rules
+## Thresholds
 
-The server's texts were written at different times and three thresholds do not line up. Use the resolution given here and mention the discrepancy only if the user asks why.
-
-| Topic | Range or flag in the response | Decision rule | Resolution |
-|---|---|---|---|
-| Recovery index 55-59 | `reference_ranges.recovery_index` labels 40-59 "Strained: reduce volume and intensity" | Morning check: 55-80 without anomalies means execute the plan | Report the label "Strained", but for a single day execute the plan. Reduction needs the multi-day pattern |
-| Recovery index 40-55, one day | Same "Strained" label | Decision rule: note it and execute the plan | As above |
-| SpO₂ | `red_flags` lists SpO₂ below 95% | Severe red flag only below 93% | 93-94% is reported as low and watched; below 93% triggers the morning-check exception and the suggestion to see a doctor |
+Recovery index bands and decision rules use the same cut points: 80, 55 and 40. The label describes the day; a change to the plan still needs the multi-day pattern, except below 40. SpO₂ appears in `red_flags` only below 93%; 93-94% is labelled low in `reference_ranges` and is watched, not acted on.
 
 ## Z-scores
 

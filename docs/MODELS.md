@@ -309,9 +309,11 @@ La sigmoide è centrata a $\bar{z}_w = -0.5$ (non a zero) per dare RI ≈ 70 qua
 | Recovery Index | Classificazione |
 |---|---|
 | ≥ 80 | Recovered — pronto per intensità |
-| 60–79 | Moderate — allenamento base ok |
-| 40–59 | Strained — ridurre carico |
-| < 40 | At risk — riposo attivo o completo |
+| 55–79 | Moderate — esegui il piano settimanale |
+| 40–54 | Strained — un giorno isolato non cambia il piano; ≥3 giorni con ≥2 metriche indipendenti convergenti: ridurre l'intensità |
+| < 40 | At risk — riposo attivo o sessione Z1 breve |
+
+Le fasce coincidono con le regole di `interpretation_guidance` e del prompt `morning_check` (55–80 senza anomalie multigiorno: piano eseguito).
 
 #### Red flags (allarmi)
 
@@ -322,7 +324,7 @@ Condizioni che generano alert indipendentemente dal RI:
 | HRV crash | z < −2.0 |
 | Resting HR spike | z < −2.0 |
 | Baevsky SI elevato | z < −1.5 |
-| SpO₂ basso | < 95% (valore assoluto) |
+| SpO₂ critico | < 93% (valore assoluto; 93–94% compare come "Basso" nei reference_ranges, senza flag) |
 | Pressione sistolica | > 140 mmHg |
 | Pressione diastolica | > 90 mmHg |
 
