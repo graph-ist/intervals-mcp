@@ -64,7 +64,8 @@ The server is a plain Node.js 22 process. A public HTTPS endpoint is needed only
 |---|---|---|---|
 | `INTERVALS_API_KEY` | Yes | | intervals.icu API key (Settings → Developer) |
 | `INTERVALS_ATHLETE_ID` | No | `0` (current user) | intervals.icu athlete ID |
-| `MCP_AUTH_TOKEN` | Yes (HTTP only) | | Token required on `/mcp`. At least 32 characters: `openssl rand -hex 32` |
+| `MCP_AUTH_TOKEN` | Yes (HTTP only) | | Token required on `/mcp`. At least 32 characters, otherwise the server refuses to start: `openssl rand -hex 32` |
+| `INTERVALS_TIMEZONE` | No | athlete profile `timezone` | IANA time zone (e.g. `Europe/Rome`) used for "today" and date ranges. Without it the server reads the zone from the athlete profile at startup, and uses the process zone until then or if that fails |
 | `UPLOAD_DIR` | No | | HTTP only: directory from which `upload_activity` may read local files. Without it, remote uploads accept only `file_base64` |
 | `PORT` | No | `3001` | HTTP port (`npm run serve` only) |
 

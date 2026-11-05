@@ -9,7 +9,7 @@ export function registerActivityTools(server: McpServer): void {
     "get_recent_activities",
     "Get recent activities. Use to find latest workouts.",
     {
-      days: z.number().optional().describe("How many days back (default 14)"),
+      days: z.number().int().min(1).max(730).optional().describe("How many days back (default 14)"),
       limit: z.number().optional().describe("Return at most this many activities"),
       fields: z
         .array(z.string())

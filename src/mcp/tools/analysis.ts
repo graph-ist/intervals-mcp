@@ -17,7 +17,7 @@ export function registerAnalysisTools(server: McpServer): void {
     "get_training_load_risk",
     "Training load risk analysis: Monotony, Strain (Foster 1998), ACWR acute:chronic workload ratio with injury risk zones (Gabbett 2016). Flags spikes, monotonous blocks, and cumulative overload. Uses CTL/ATL from intervals.icu (EWMA model) and daily TSS. IMPORTANT: always interpret every numeric value using the reference_ranges in the response — state which range it falls into and what it means for the athlete.",
     {
-      days: z.number().optional().describe("Days of history (default 42, min 14)"),
+      days: z.number().int().min(1).max(365).optional().describe("Days of history (default 42, min 14)"),
     },
     async ({ days }) => {
       try {
@@ -37,8 +37,18 @@ export function registerAnalysisTools(server: McpServer): void {
     "Calculate aerobic decoupling (Pw:Hr drift) for a steady-state activity. Compares power:HR efficiency between the first and second half. Drift > 5% indicates insufficient aerobic base or pacing issues. Based on Friel/Coggan methodology. IMPORTANT: always interpret every numeric value using the reference_ranges in the response.",
     {
       activity_id: z.string().describe("Activity ID"),
-      exclude_start_minutes: z.number().optional().describe("Minutes to exclude from start for warm-up (default 10)"),
-      exclude_end_minutes: z.number().optional().describe("Minutes to exclude from end for cool-down (default 5)"),
+      exclude_start_minutes: z
+        .number()
+        .min(0)
+        .max(240)
+        .optional()
+        .describe("Minutes to exclude from start for warm-up (default 10)"),
+      exclude_end_minutes: z
+        .number()
+        .min(0)
+        .max(240)
+        .optional()
+        .describe("Minutes to exclude from end for cool-down (default 5)"),
     },
     async ({ activity_id, exclude_start_minutes, exclude_end_minutes }) => {
       try {
@@ -60,7 +70,7 @@ export function registerAnalysisTools(server: McpServer): void {
     "get_recovery_index",
     "Composite recovery & readiness dashboard. Computes z-scores of HRV (rMSSD), resting HR, sleep, Baevsky stress index, SpO₂, and respiratory rate against individual 30-day baselines. Returns per-metric status (green/amber/red), an overall Recovery Index 0-100, trend arrows, and red-flag alerts. Requires device-synced wellness data. IMPORTANT: (1) always interpret every numeric value using the reference_ranges in the response. (2) Single-day readings are NOISE, not signal — HRV has ±15-20% intra-individual daily variance (Plews et al. 2012). Do NOT recommend training changes based on a single day's RI. Only multi-day patterns (≥3 days of converging trends across independent metrics) warrant plan modifications. Use the interpretation_guidance in the response for decision rules.",
     {
-      days: z.number().optional().describe("Days of history for analysis (default 30, min 14)"),
+      days: z.number().int().min(1).max(365).optional().describe("Days of history for analysis (default 30, min 14)"),
     },
     async ({ days }) => {
       try {
@@ -87,8 +97,18 @@ export function registerAnalysisTools(server: McpServer): void {
           "PD model source for FTP/W'. FFT_CURVES (default, matches intervals.icu UI), MORTON_3P, ECP (highest W'), MS_2P, or sport_settings (manual values). Ignored if both ftp_override and frc_override are set.",
         ),
       curve: z.string().optional().describe("Power curve time window: 42d (default), 1y, s0, all"),
-      ftp_override: z.number().optional().describe("Override FTP (watts). Takes priority over model."),
-      frc_override: z.number().optional().describe("Override FRC/W' (joules). Takes priority over model."),
+      ftp_override: z
+        .number()
+        .positive()
+        .max(1000)
+        .optional()
+        .describe("Override FTP (watts). Takes priority over model."),
+      frc_override: z
+        .number()
+        .positive()
+        .max(100000)
+        .optional()
+        .describe("Override FRC/W' (joules). Takes priority over model."),
     },
     async ({ activity_id, model, curve, ftp_override, frc_override }) => {
       try {
@@ -174,7 +194,7 @@ export function registerAnalysisTools(server: McpServer): void {
     "get_polarization_analysis",
     "Training intensity distribution (TID) on Seiler's 3-zone model (Z1-2 below LT1 | Z3-4 between LT1 and LT2 | Z5+ above LT2), aggregated from power zones for rides and HR/pace zones otherwise. Returns the Polarization Index of Treff et al. (2019) and the distribution type (polarized, pyramidal, threshold, HIIT, base). IMPORTANT: always interpret every numeric value using the reference_ranges in the response.",
     {
-      days: z.number().optional().describe("Days to analyze (default 28)"),
+      days: z.number().int().min(1).max(365).optional().describe("Days to analyze (default 28)"),
       sport: z.string().optional().describe("Sport type (default Ride)"),
     },
     async ({ days, sport }) => {
@@ -194,7 +214,7 @@ export function registerAnalysisTools(server: McpServer): void {
     "get_longitudinal_trends",
     "Longitudinal trend analysis for key performance and recovery markers. Tracks EF (efficiency factor), power, HRR (heart rate recovery), decoupling, CTL, HRV, resting HR, weight, and sleep over time using linear regression. Flags significant changes indicating progression, overreaching, or stagnation. Includes HRR trend (Daanen et al., 2012). IMPORTANT: always interpret every value using the direction and change_pct fields.",
     {
-      days: z.number().optional().describe("Days of history to analyze (default 90, min 14)"),
+      days: z.number().int().min(1).max(730).optional().describe("Days of history to analyze (default 90, min 14)"),
       sport: z.string().optional().describe("Sport type for activity metrics (default Ride)"),
     },
     async ({ days, sport }) => {

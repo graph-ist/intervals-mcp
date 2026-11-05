@@ -22,8 +22,10 @@ const pkg = JSON.parse(readFileSync(join(__dirname, "..", "package.json"), "utf-
 const VERSION: string = pkg.version;
 
 const READ_ONLY_TOOL = /^(get|list|search|export|download|convert)_/;
+// Writes that delete, replace or recalculate existing data in place. Per the MCP spec a non-read-only tool is
+// destructive unless stated otherwise, so anything that overwrites or cascades must be listed here.
 const DESTRUCTIVE_TOOL =
-  /^(delete_|bulk_delete_)|^(update_activity_streams|upload_activity_streams_csv|update_folder_shared_with|update_events_range|replace_gear|block_chat)$/;
+  /^(delete_|bulk_delete_)|^(update_activity_streams|upload_activity_streams_csv|update_activity_intervals|update_folder_shared_with|update_events_range|update_plan_workouts|apply_sport_settings|apply_plan|apply_plan_changes|update_training_plan|update_athlete_plans|update_wellness_bulk|upload_wellness_csv|replace_gear|block_chat)$/;
 
 export function createServer(opts: ServerOptions = { allowAnyLocalPath: true }): {
   mcpServer: McpServer;

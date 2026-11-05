@@ -38,6 +38,16 @@ describe("createServer", () => {
     expect(byName.create_workout?.readOnlyHint).toBe(false);
     expect(byName.create_workout?.destructiveHint).toBe(false);
     expect(byName.send_chat_message?.openWorldHint).toBe(true);
+    for (const name of ["update_activity_intervals", "apply_sport_settings", "apply_plan", "upload_wellness_csv"]) {
+      expect(byName[name]?.destructiveHint, name).toBe(true);
+    }
+    expect(byName.update_activity?.destructiveHint).toBe(false);
+  });
+
+  it("rejects out-of-range numeric arguments", async () => {
+    const client = await connect();
+    const res = await client.callTool({ name: "get_training_load_risk", arguments: { days: 100000 } });
+    expect(res.isError).toBe(true);
   });
 
   it("refuses local file paths when not allowed or outside the upload dir", async () => {

@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import * as icu from "./intervals.js";
+import { initTimeZone } from "./mcp/helpers.js";
 import { createServer } from "./server.js";
 
 const apiKey = process.env.INTERVALS_API_KEY;
@@ -12,6 +13,7 @@ if (!apiKey) {
 }
 
 icu.configure(apiKey, athleteId);
+void initTimeZone(process.env.INTERVALS_TIMEZONE, icu.getAthlete);
 
 const { mcpServer } = createServer();
 const transport = new StdioServerTransport();

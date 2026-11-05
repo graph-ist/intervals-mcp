@@ -3,6 +3,7 @@ import { timingSafeEqual } from "node:crypto";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import express from "express";
 import * as icu from "./intervals.js";
+import { initTimeZone } from "./mcp/helpers.js";
 import { createServer } from "./server.js";
 
 const apiKey = process.env.INTERVALS_API_KEY;
@@ -21,17 +22,17 @@ if (!mcpAuthToken) {
 }
 
 if (mcpAuthToken.length < 32) {
-  console.warn("MCP_AUTH_TOKEN is shorter than 32 characters: generate a stronger one with `openssl rand -hex 32`");
+  console.error("MCP_AUTH_TOKEN must be at least 32 characters: generate one with `openssl rand -hex 32`");
+  process.exit(1);
 }
 
 icu.configure(apiKey, athleteId);
+void initTimeZone(process.env.INTERVALS_TIMEZONE, icu.getAthlete);
 
 // Remote clients cannot read the server's disk: local paths are allowed only inside UPLOAD_DIR
 const serverOptions = { allowAnyLocalPath: false, uploadDir: process.env.UPLOAD_DIR };
 
 const app = express();
-// Base64 activity files (up to 25 MB raw) travel inside the JSON-RPC body
-app.use(express.json({ limit: "40mb" }));
 
 // Richiede il token in "Authorization: Bearer <MCP_AUTH_TOKEN>" oppure come
 // query param "?token=<MCP_AUTH_TOKEN>" su /mcp. Il server è esposto
@@ -62,7 +63,9 @@ function requireAuth(req: express.Request, res: express.Response, next: express.
   next();
 }
 
-app.use("/mcp", requireAuth);
+// Auth runs before body parsing, so unauthenticated clients cannot make the server read 40 MB bodies.
+// Base64 activity files (up to 25 MB raw) travel inside the JSON-RPC body.
+app.use("/mcp", requireAuth, express.json({ limit: "40mb" }));
 
 // Stateless: every request gets its own transport and server, so a restart, a TTL or a
 // stale Mcp-Session-Id never leaves a client with "Server not initialized".

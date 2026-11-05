@@ -61,7 +61,7 @@ export function registerGearTools(server: McpServer): void {
       distance: z.number().optional().describe("Trigger distance in meters"),
       time: z.number().optional().describe("Trigger time in seconds"),
       activities: z.number().optional().describe("Trigger after N activities"),
-      days: z.number().optional().describe("Trigger after N days"),
+      days: z.number().int().positive().optional().describe("Trigger after N days"),
     },
     ({ gear_id, ...reminder }) => safe(() => icu.createGearReminder(gear_id, reminder)),
   );
@@ -75,7 +75,7 @@ export function registerGearTools(server: McpServer): void {
       reminder_id: z.number().describe("Reminder ID (see get_gear)"),
       updates: recordArg.describe("Reminder fields to change (name, distance, time, activities, days)"),
       reset: z.boolean().optional().describe("Reset the reminder counters (maintenance done)"),
-      snooze_days: z.number().optional().describe("Snooze for N days"),
+      snooze_days: z.number().int().positive().optional().describe("Snooze for N days"),
     },
     ({ gear_id, reminder_id, updates, reset, snooze_days }) =>
       safe(() => icu.updateGearReminder(gear_id, reminder_id, updates, reset ?? false, snooze_days ?? 0)),

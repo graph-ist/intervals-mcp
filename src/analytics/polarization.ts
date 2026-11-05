@@ -1,4 +1,5 @@
 import * as icu from "../intervals.js";
+import { daysAgo, today } from "../mcp/helpers.js";
 import { matchesSport } from "./utils.js";
 
 /**
@@ -25,8 +26,8 @@ interface ZoneSummary {
 }
 
 export async function computePolarization(days: number, sport: string) {
-  const newest = new Date().toISOString().slice(0, 10);
-  const oldest = new Date(Date.now() - days * 86400000).toISOString().slice(0, 10);
+  const newest = today();
+  const oldest = daysAgo(days);
 
   const activities = await icu.getActivities(oldest, newest);
 

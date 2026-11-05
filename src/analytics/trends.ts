@@ -1,4 +1,5 @@
 import * as icu from "../intervals.js";
+import { daysAgo, today } from "../mcp/helpers.js";
 import type { Activity, WellnessDay } from "../types.js";
 import { matchesSport } from "./utils.js";
 
@@ -42,8 +43,8 @@ interface TrendResult {
 }
 
 export async function computeTrends(days: number, sport: string) {
-  const newest = new Date().toISOString().slice(0, 10);
-  const oldest = new Date(Date.now() - days * 86400000).toISOString().slice(0, 10);
+  const newest = today();
+  const oldest = daysAgo(days);
 
   const [activities, wellness] = await Promise.all([
     icu.getActivities(oldest, newest),
