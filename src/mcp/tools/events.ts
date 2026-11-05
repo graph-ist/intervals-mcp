@@ -49,7 +49,7 @@ export function registerEventTools(server: McpServer): void {
     "create_training_plan",
     `Create multiple workout events on the intervals.icu calendar in batch. Use this to build a periodized training plan with TSS targets. Each event needs at minimum: start_date_local (YYYY-MM-DD), category ('WORKOUT'), type (sport: 'Run','Ride','Swim','Brick'), name, and optionally load_target (TSS) and description.
 
-IMPORTANT — description MUST use intervals.icu Workout Builder syntax so the workout renders as a structured visual chart (colored bars, zones, targets). Rules:
+The description must use intervals.icu Workout Builder syntax so the workout renders as a structured visual chart (colored bars, zones, targets). Rules:
 - Each step starts with '- ' on its own line.
 - Duration: 30s, 10m, 1m30, 1h. Distance: 300m, 5km.
 - Power: 200w, 80% (of FTP), Z2 (zone). Range: 155-178w, 80-90%.
