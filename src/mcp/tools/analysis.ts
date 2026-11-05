@@ -6,6 +6,7 @@ import { computeFatigueResistance } from "../../analytics/fatigue-resistance.js"
 import { computeLoadTracker } from "../../analytics/load-tracker.js";
 import { computeMetabolicProfile } from "../../analytics/metabolic.js";
 import { computePolarization } from "../../analytics/polarization.js";
+import { computeReadinessCheck } from "../../analytics/readiness.js";
 import { computeRecoveryIndex } from "../../analytics/recovery.js";
 import { computeTrainingLoadRisk } from "../../analytics/training-load.js";
 import { computeTrends } from "../../analytics/trends.js";
@@ -76,6 +77,27 @@ export function registerAnalysisTools(server: McpServer): void {
       try {
         const result = await computeRecoveryIndex(days ?? 30, daysAgo, today);
         if (!result) return toolError("Insufficient wellness data (need ≥ 7 days with device sync).");
+        return safeReturn(result);
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        return toolError(`API error: ${msg}`);
+      }
+    },
+  );
+
+  // --- get_readiness_check ---
+  server.tool(
+    "get_readiness_check",
+    "Daily readiness on intervals.icu values, the primary readiness check. Compares the 7-day means of readiness, HRV and resting HR with their 60-day normal band, adds TSB, and returns one of four cases: 1 low (keep intensity low), 2 tired (consider a recovery day), 3 watch (follow the plan without adding intensity), 4 ok (no signal against the plan). Also returns the severe flags (HRV or resting HR z below -2, SpO2 below 93%) that justify changing a session whatever the case. Same rule as the training dashboard.",
+    {
+      date: dateStr
+        .optional()
+        .describe("Evaluate on the last day with data on or before this date, YYYY-MM-DD (default today)"),
+    },
+    async ({ date }) => {
+      try {
+        const result = await computeReadinessCheck(date ?? today());
+        if (!result) return toolError("No wellness data on or before this date.");
         return safeReturn(result);
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);

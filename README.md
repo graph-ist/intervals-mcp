@@ -3,7 +3,7 @@
 [![CI](https://github.com/graph-ist/intervals-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/graph-ist/intervals-mcp/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-MCP server for [intervals.icu](https://intervals.icu). It exposes 146 tools covering the whole documented public API (except the OAuth-only `disconnect-app` endpoint), including nine analysis tools, and four prompts.
+MCP server for [intervals.icu](https://intervals.icu). It exposes 147 tools covering the whole documented public API (except the OAuth-only `disconnect-app` endpoint), including ten analysis tools, and four prompts.
 
 Two transports are provided: stdio for local clients such as Claude Desktop, and Streamable HTTP for remote clients such as claude.ai custom connectors.
 
@@ -69,7 +69,7 @@ The server is a plain Node.js 22 process. A public HTTPS endpoint is needed only
 | `UPLOAD_DIR` | No | | HTTP only: directory from which `upload_activity` may read local files. Without it, remote uploads accept only `file_base64` |
 | `PORT` | No | `3001` | HTTP port (`npm run serve` only) |
 
-## Tools (146)
+## Tools (147)
 
 ### Athlete and settings
 
@@ -151,6 +151,7 @@ Custom tools that compute physiological models on top of the API data. Formulas,
 
 | Tool | Description |
 |---|---|
+| `get_readiness_check` | Daily readiness on intervals.icu values: 7-day means of readiness, HRV and resting HR against a 60-day normal band (mean ± half the sample SD), plus TSB below −30, give one of four cases. Adds the severe flags (HRV or resting HR z below −2, SpO₂ below 93%). Same rule as the training dashboard and the `intervals-coach` skill |
 | `get_recovery_index` | Composite 0-100 recovery index from HRV, resting HR, sleep, Baevsky SI, SpO₂, respiration and subjective fields (mood, motivation, fatigue, soreness, stress, injury), against an individual 30-day baseline |
 | `get_training_load_risk` | Monotony, Strain (Foster, 1998), ACWR (Gabbett, 2016), volume spikes |
 | `get_aerobic_decoupling` | Pw:Hr decoupling: drift between first and second half, EF curve, assessment |
@@ -166,7 +167,7 @@ Which tool answers which question:
 | Question | Tool |
 |---|---|
 | How much did I ride, run or swim this month? | `get_fitness_summary` |
-| How am I today, can I train hard? | `get_recovery_index` |
+| How am I today, can I train hard? | `get_readiness_check` |
 | Am I increasing the load too fast? | `get_training_load_risk` |
 | What do the raw daily wellness values look like? | `get_wellness_data` |
 | Am I improving or declining? | `get_longitudinal_trends` |
@@ -269,7 +270,7 @@ Available through the prompt picker in claude.ai and Claude Desktop.
 
 | Prompt | When | What it does |
 |---|---|---|
-| `morning_check` | Morning | Readiness scan on intervals.icu values: 7-day means of readiness, HRV and resting HR against a 60-day normal band, plus TSB, give one of four sentences (the same rule as the training dashboard). Only severe flags from `get_recovery_index` (HRV or resting HR z below −2, SpO₂ below 93%) add an exception |
+| `morning_check` | Morning | Calls `get_readiness_check` and reports its case and severe flags; a specific, reversible change only when the case is not "ok" or a severe flag is present |
 | `weekly_review` | Sunday evening | Primary decision tool: review of the past week and planning of the next one, with explicit exception criteria |
 | `activity_review` | After a session | Finds the latest Ride, Run or Swim and analyses metrics, zones, pacing, decoupling and dFRC |
 | `load_tracker` | Any time | Calls `get_load_tracker` and draws weekly columns for the previous week, the current one and the next 11, filled with the TSS done in swim, bike, run and gym against the target. Weeks without a target stay empty |

@@ -33,6 +33,7 @@ The server exposes the same four as MCP prompts (`morning_check`, `weekly_review
 
 | Question | Tool |
 |---|---|
+| How am I today, can I train hard? | `get_readiness_check` (or the full morning check) |
 | How much did I ride, run or swim over a period? | `get_fitness_summary` |
 | Raw daily wellness values | `get_wellness_data` |
 | Am I increasing load too fast? | `get_training_load_risk` |

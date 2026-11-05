@@ -5,20 +5,6 @@ export function registerPrompts(server: McpServer): void {
   const PROMPT_SUFFIX =
     "Interpreta ogni valore usando i reference_ranges della risposta — indica la fascia e il significato per l'atleta. No emoji.";
 
-  // The readiness rule follows intervals.icu values and matches the training dashboard; keep it identical to
-  // skills/intervals-coach/references/readiness-rule.md
-  const READINESS_RULE = `Per readiness, HRV e FC a riposo di intervals.icu, riferite all'ultimo giorno con dati (indica la data):
-- media degli ultimi 7 giorni, quel giorno compreso (almeno 4 valori, altrimenti "dato insufficiente");
-- fascia normale: media dei 60 giorni precedenti, quel giorno escluso, più o meno metà della deviazione standard campionaria (almeno 30 valori, altrimenti nessuna fascia);
-- posizione della media a 7 giorni: sotto, nella fascia, sopra.
-TSB = CTL − ATL dell'ultimo giorno.
-
-Regola, in ordine, decide la prima che vale:
-1. HRV sotto e FC a riposo sopra la fascia: "oggi tieni l'intensità bassa".
-2. TSB sotto −30: "la fatica accumulata è alta: valuta un giorno di scarico".
-3. Almeno un segnale fuori fascia (HRV sotto, FC a riposo sopra o readiness sotto): "segui il piano senza aggiungere intensità".
-4. Altrimenti: "nessun segnale contrario al piano di oggi".`;
-
   server.prompt(
     "morning_check",
     "Check mattutino: confronta readiness, HRV e FC a riposo di intervals.icu con la loro fascia normale e dice se qualcosa giustifica uno scostamento dal piano settimanale",
@@ -30,17 +16,14 @@ Regola, in ordine, decide la prima che vale:
             type: "text" as const,
             text: `Check mattutino rapido. Il riferimento sono i valori di intervals.icu. Non è uno strumento decisionale quotidiano: dice solo se qualcosa giustifica uno scostamento dal piano settimanale già stabilito.
 
-1. Chiama get_wellness_data con days=67 e fields ["id","readiness","hrv","restingHR","ctl","atl"].
-2. Applica la regola:
-
-${READINESS_RULE}
-
-3. Chiama get_recovery_index solo per gli allarmi gravi di oggi: HRV o FC a riposo con z-score sotto −2, SpO₂ sotto il 93%. Un allarme grave è l'unica eccezione che giustifica un cambio di seduta oltre alla regola; con SpO₂ sotto il 93% suggerisci di sentire un medico. Il Recovery Index è un indice di questo server, non di intervals: non usarlo per decidere e non riportarlo al posto della readiness.
+1. Chiama get_readiness_check senza argomenti. Calcola sui valori di intervals.icu la regola di readiness: medie a 7 giorni di readiness, HRV e FC a riposo contro la loro fascia normale di 60 giorni, più il TSB, e restituisce uno di quattro casi (1 intensità bassa, 2 valuta un giorno di scarico, 3 segui il piano senza aggiungere intensità, 4 nessun segnale contrario al piano). È la stessa regola del cruscotto.
+2. Riporta il caso così com'è, senza ricalcolarlo. Gli allarmi gravi in severe_flags (HRV o FC a riposo con z-score sotto −2, SpO₂ sotto il 93%) sono l'unica eccezione che giustifica un cambio di seduta oltre alla regola; con SpO₂ sotto il 93% suggerisci di sentire un medico.
+3. Non usare il Recovery Index per decidere e non riportarlo al posto della readiness: è un indice di questo server, non di intervals.
 
 Output:
 - Data dei dati, readiness di oggi e TSB.
 - HRV, FC a riposo e readiness: media a 7 giorni, fascia normale, posizione.
-- La frase della regola.
+- Il caso della regola, con la sua frase nella lingua dell'utente.
 - Allarmi gravi, se ce ne sono.
 - Solo se la regola non è la 4 o c'è un allarme grave: una modifica specifica e reversibile della seduta di oggi.
 
@@ -67,7 +50,7 @@ Questo è lo strumento PRIMARIO di decisione. Le scelte di volume, intensità e 
 PARTE 1 — ANALISI SETTIMANA CONCLUSA:
 - Volume per sport (ore, km, TSS)
 - Carico: CTL/ATL/TSB trend, ACWR, Monotony/Strain
-- Recupero, sui valori di intervals.icu: readiness, HRV e FC a riposo, con la media a 7 giorni e la fascia normale come nel morning_check, all'inizio e alla fine della settimana (chiama get_wellness_data con days=74 e fields ["id","readiness","hrv","restingHR","ctl","atl"]); allarmi gravi della settimana da get_recovery_index (HRV o FC a riposo con z sotto −2, SpO₂ sotto il 93%). Il Recovery Index non è un valore di intervals: non usarlo per decidere
+- Recupero, sui valori di intervals.icu: readiness, HRV e FC a riposo, con la media a 7 giorni e la fascia normale come nel morning_check, all'inizio e alla fine della settimana (chiama get_readiness_check con date=${daysAgo(6)} e poi senza argomenti) e i loro allarmi gravi. Il Recovery Index non è un valore di intervals: non usarlo per decidere
 - Aderenza al piano: sessioni completate vs pianificate, scostamenti e motivi
 - Trend longitudinali: EF, HRR, potenza se disponibili
 

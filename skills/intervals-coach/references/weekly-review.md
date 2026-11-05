@@ -12,8 +12,8 @@ Call these in parallel; each covers one block of the review.
 |---|---|
 | Volume per sport (hours, km, TSS) | `get_fitness_summary` with the review period |
 | Load: CTL/ATL/TSB, ACWR, monotony, strain | `get_training_load_risk` (default 42 days) |
-| Recovery on intervals.icu values: readiness, HRV, resting HR | `get_wellness_data` with `days: 74` and the fields of the [readiness rule](readiness-rule.md) |
-| Severe flags of the week | `get_recovery_index` (default 30 days; use `history`) |
+| Recovery on intervals.icu values: readiness, HRV, resting HR | `get_readiness_check` with `date` = the first day of the review period, and again with no arguments |
+| Severe flags during the week | `get_recovery_index` (default 30 days; use `history`) |
 | Adherence: planned vs done | `get_events` with the review period and `category: "WORKOUT"`, plus `get_recent_activities` with `days: 7` |
 | Intensity distribution | `get_polarization_analysis` with `days: 28` (one week is too short to classify; report the last week as part of the four) |
 | Longitudinal trends: EF, HRR, power | `get_longitudinal_trends` (default 90 days) |
@@ -25,7 +25,7 @@ If a tool returns insufficient data, mark that block as unavailable and go on.
 
 - Volume per sport.
 - Load: CTL, ATL and TSB trend; ACWR; monotony and strain. Read ACWR as a trend indicator, not as an injury probability (see [interpretation.md](interpretation.md)).
-- Recovery: the [readiness rule](readiness-rule.md) at the start and at the end of the week (7-day means against the normal band, and the sentence each day gives), and any severe flags. Do not decide on the Recovery Index.
+- Recovery: the [readiness rule](readiness-rule.md) at the start and at the end of the week (7-day means against the normal band, and the case each gives), and any severe flags. Do not decide on the Recovery Index.
 - Adherence: sessions completed against planned, deviations and their reasons if the user gave them.
 - Trends: EF, HRR and power where available.
 
