@@ -27,7 +27,7 @@ These protocols sit on top of the intervals-mcp tools. Tool names below are the 
 | "How did today's ride/run/swim go?", analysis of one session | [Activity review](references/activity-review.md) |
 | Weekly TSS against targets, "am I on track this week?" | [Load tracker](references/load-tracker.md) |
 
-The server exposes the same four as MCP prompts (`morning_check`, `weekly_review`, `activity_review`, `load_tracker`). If the user invokes a prompt, follow it; this skill adds the reading rules the prompts assume.
+The server exposes the same four as MCP prompts (`morning_check`, `weekly_review`, `activity_review`, `load_tracker`). They are only entry points: they name the tools and fill in the dates, and point back to the protocols here, which hold the rules.
 
 ## Questions outside the four protocols
 
