@@ -1,5 +1,6 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
+import { computeCpHistory } from "../../analytics/cp-history.js";
 import { computeDecoupling } from "../../analytics/decoupling.js";
 import { computeDfrc } from "../../analytics/dfrc.js";
 import { computeFatigueResistance } from "../../analytics/fatigue-resistance.js";
@@ -69,7 +70,7 @@ export function registerAnalysisTools(server: McpServer): void {
   // --- get_recovery_index ---
   server.tool(
     "get_recovery_index",
-    "Composite recovery & readiness dashboard. Computes z-scores of HRV (rMSSD), resting HR, sleep, Baevsky stress index, SpO₂, and respiratory rate against individual 30-day baselines. Returns per-metric status (green/amber/red), an overall Recovery Index 0-100, trend arrows, and red-flag alerts. Requires device-synced wellness data. The response includes reference_ranges and interpretation_guidance with decision rules; single-day values are noisy, so the rules act on multi-day patterns.",
+    "Composite recovery & readiness dashboard. Computes z-scores of HRV (rMSSD), resting HR, sleep, Baevsky stress index, SpO₂, and respiratory rate against individual 30-day baselines. Returns per-metric status (green/amber/red), an overall Recovery Index 0-100, trend arrows, and red-flag alerts. Requires device-synced wellness data. The response includes reference_ranges. For daily decisions use get_readiness_check, which reads intervals.icu values; this index is a secondary diagnostic.",
     {
       days: z.number().int().min(1).max(365).optional().describe("Days of history for analysis (default 30, min 14)"),
     },
@@ -192,24 +193,36 @@ export function registerAnalysisTools(server: McpServer): void {
     },
   );
 
-  // Disabled: needs beat-to-beat RR data (chest strap with HRV logging); re-enable together with the dfa-alpha1 import.
-  // // --- get_dfa_alpha1 ---
-  // server.tool(
-  //   "get_dfa_alpha1",
-  //   "DFA α1 threshold detection. Computes α1 from the activity's beat-to-beat RR intervals (chest strap with HRV/RR logging enabled) and estimates HRVT1 (α1=0.75 ≈ VT1) and HRVT2 (α1=0.50 ≈ VT2) as HR and power, by regression as in Rogers et al. (2021). Best on a graded ramp test. Optical/wrist HR and Apple Watch do NOT provide RR data. The response includes a confidence field and reference_ranges.",
-  //   {
-  //     activity_id: z.string().describe("Activity ID from a graded ramp test or steady-ramp effort"),
-  //   },
-  //   async ({ activity_id }) => {
-  //     try {
-  //       const result = await computeDfaAnalysis(activity_id);
-  //       return safeReturn(result);
-  //     } catch (err) {
-  //       const msg = err instanceof Error ? err.message : String(err);
-  //       return toolError(`API error: ${msg}`);
-  //     }
-  //   },
-  // );
+  // --- get_cp_history ---
+  server.tool(
+    "get_cp_history",
+    "Month-by-month critical power (CP), W' and Pmax from intervals.icu power-duration models fitted on each calendar month's best efforts, with peak 5 s / 1 min / 5 min / 20 min power, the activities that set each curve, and the change from the first to the last month with data. Shows whether the season shifts the power curve. Months without rides are listed as such.",
+    {
+      months: z
+        .number()
+        .int()
+        .min(1)
+        .max(24)
+        .optional()
+        .describe("Number of calendar months, current one included (default 12)"),
+      sport: z.string().optional().describe("Sport type (default Ride)"),
+      model: z
+        .enum(["MORTON_3P", "MS_2P", "FFT_CURVES", "ECP"])
+        .optional()
+        .describe(
+          "Model for the cp, w_prime and p_max columns (default MORTON_3P); every model is also returned per month",
+        ),
+      newest: dateStr.optional().describe("Last day of the window YYYY-MM-DD (default today)"),
+    },
+    async ({ months, sport, model, newest }) => {
+      try {
+        return safeReturn(await computeCpHistory({ months, sport, model, newest }));
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        return toolError(`API error: ${msg}`);
+      }
+    },
+  );
 
   // --- get_polarization_analysis ---
   server.tool(

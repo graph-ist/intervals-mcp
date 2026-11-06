@@ -26,7 +26,7 @@ describe("toolsets", () => {
     expect(names).toContain("get_readiness_check");
     expect(names).toContain("create_training_plan");
     expect(names).not.toContain("send_chat_message");
-    expect(names).not.toContain("get_power_curves");
+    expect(names).not.toContain("get_athlete_curves");
     expect(createServer({ toolsets: ["core"] }).toolCount).toBe(TOOLSETS.core.length);
   });
 

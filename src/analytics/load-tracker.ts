@@ -70,7 +70,7 @@ export async function computeLoadTracker(opts: LoadTrackerOptions, today: string
     icu.getEvents(firstMonday, lastDay, "WORKOUT,TARGET", { limit: 1000 }),
     icu.getActivities(firstMonday, lastDay, {
       limit: 2000,
-      fields: ["start_date_local", "type", "icu_training_load"],
+      fields: ["start_date_local", "type", "icu_training_load", "compliance", "paired_event_id"],
     }),
     icu.getAthlete(),
   ]);
@@ -95,6 +95,12 @@ export async function computeLoadTracker(opts: LoadTrackerOptions, today: string
     return v;
   };
 
+  // Plan compliance per day: planned workouts (paired or not), compliance of paired activities, unplanned sessions
+  type DayPlan = { planned: number; paired: number; unpaired: number; compliance: number[]; unplanned: number };
+  const planByDay = new Map<string, DayPlan>();
+  const planDay = (date: string) =>
+    bucketFor(planByDay, date, () => ({ planned: 0, paired: 0, unpaired: 0, compliance: [], unplanned: 0 }));
+
   const targetEvents = new Map<string, number>();
   for (const e of events ?? []) {
     const date = e.start_date_local?.slice(0, 10);
@@ -108,6 +114,10 @@ export async function computeLoadTracker(opts: LoadTrackerOptions, today: string
     }
     const sport = sportGroup(e.type);
     if (!date || sport === "other") continue;
+    const day = planDay(date);
+    day.planned++;
+    if (e.paired_activity_id) day.paired++;
+    else day.unpaired++;
     const load = weighted(e.type, Number(e.icu_training_load ?? e.load_target ?? 0));
     if (load > 0) bucketFor(planned, date, emptyTotals)[sport] += load;
   }
@@ -116,7 +126,12 @@ export async function computeLoadTracker(opts: LoadTrackerOptions, today: string
     const date = String(a.start_date_local ?? "").slice(0, 10);
     const load = weighted(a.type, Number(a.icu_training_load ?? 0));
     const sport = sportGroup(a.type);
-    if (!date || !(load > 0) || sport === "other") continue;
+    if (!date || sport === "other") continue;
+    // compliance is meaningful only for activities paired with a planned workout (unpaired ones can read 0)
+    if (a.paired_event_id != null && Number.isFinite(Number(a.compliance)))
+      planDay(date).compliance.push(Number(a.compliance));
+    else if (a.paired_event_id == null) planDay(date).unplanned++;
+    if (!(load > 0)) continue;
     bucketFor(actual, date, emptyTotals)[sport] += load;
   }
 
@@ -130,6 +145,7 @@ export async function computeLoadTracker(opts: LoadTrackerOptions, today: string
     const plannedWeek = emptyTotals();
     const actualWeek = emptyTotals();
     let cumulative = 0;
+    const pc = { planned: 0, done: 0, missed: 0, toDo: 0, unplanned: 0, compliance: [] as number[] };
 
     const days = Array.from({ length: 7 }, (_, d) => {
       const date = addDays(start, d);
@@ -140,6 +156,15 @@ export async function computeLoadTracker(opts: LoadTrackerOptions, today: string
         actualWeek[s] += act[s];
       }
       cumulative += sum(act);
+      const p = planByDay.get(date);
+      if (p) {
+        pc.planned += p.planned;
+        pc.done += p.paired;
+        if (date < today) pc.missed += p.unpaired;
+        else pc.toDo += p.unpaired;
+        pc.unplanned += p.unplanned;
+        pc.compliance.push(...p.compliance);
+      }
       return { date, tss: roundTotals(act), total_tss: round(sum(act)), cumulative_tss: round(cumulative) };
     });
 
@@ -178,6 +203,16 @@ export async function computeLoadTracker(opts: LoadTrackerOptions, today: string
       ...(status === "current" && remaining != null && daysLeft
         ? { days_left_including_today: daysLeft, tss_per_day_needed: round(remaining / daysLeft) }
         : {}),
+      plan_compliance: {
+        planned_workouts: pc.planned,
+        completed_workouts: pc.done,
+        missed_workouts: pc.missed,
+        workouts_still_to_do: pc.toDo,
+        unplanned_activities: pc.unplanned,
+        avg_compliance_pct: pc.compliance.length
+          ? Math.round((pc.compliance.reduce((t, v) => t + v, 0) / pc.compliance.length) * 10) / 10
+          : null,
+      },
       ...(status === "current" && { days }),
     };
   });
@@ -188,7 +223,7 @@ export async function computeLoadTracker(opts: LoadTrackerOptions, today: string
     activity_type_fitness_pct: [...fitnessFactor]
       .filter(([type]) => sportGroup(type) !== "other")
       .map(([type, f]) => ({ type, pct: Math.round(f * 100) })),
-    note: "TSS is intervals.icu icu_training_load. Only swim, bike (all ride types), run (all run types) and strength (WeightTraining, Workout, CrossFit) count; every other activity (Hike, Yoga, Pilates, ...) is ignored and counts 0. Loads are weighted with the athlete's Activity Types fitness % (gym sessions count 60% by default; swim, bike and run 100%), for both done and planned load. Weekly targets come from manual targets, then TARGET calendar events, then the load of planned workouts.",
+    note: "TSS is intervals.icu icu_training_load. Only swim, bike (all ride types), run (all run types) and strength (WeightTraining, Workout, CrossFit) count; every other activity (Hike, Yoga, Pilates, ...) is ignored and counts 0. Loads are weighted with the athlete's Activity Types fitness % (gym sessions count 60% by default; swim, bike and run 100%), for both done and planned load. Weekly targets come from manual targets, then TARGET calendar events, then the load of planned workouts. plan_compliance counts planned swim/bike/run/strength workouts per week: completed (paired with an activity), missed (unpaired and already past), still to do, unplanned activities, and the mean intervals.icu compliance % of the paired activities (100 = as planned; above 100 = more than planned).",
     ...(weeksWithoutTarget > 0 && {
       hint: `${weeksWithoutTarget} of ${weekCount} weeks have no target yet (no TARGET event and no planned workouts with load). Their columns stay empty until the plan is created.`,
     }),

@@ -141,4 +141,63 @@ describe("computeLoadTracker", () => {
     expect(r.weeks[26]).toMatchObject({ week_start: "2026-10-05", week_end: "2026-10-11", position: 0 });
     expect(r.weeks[26].days_left_including_today).toBeUndefined();
   });
+
+  it("counts planned, completed, missed and unplanned workouts with the mean compliance of paired activities", async () => {
+    vi.mocked(icu.getAthlete).mockResolvedValue({});
+    vi.mocked(icu.getEvents).mockResolvedValue([
+      {
+        id: 1,
+        category: "WORKOUT",
+        start_date_local: "2026-10-05T00:00:00",
+        type: "Ride",
+        load_target: 80,
+        paired_activity_id: "a1",
+      },
+      {
+        id: 2,
+        category: "WORKOUT",
+        start_date_local: "2026-10-06T00:00:00",
+        type: "Run",
+        load_target: 30,
+        paired_activity_id: "a2",
+      },
+      { id: 3, category: "WORKOUT", start_date_local: "2026-10-07T00:00:00", type: "WeightTraining", load_target: 30 },
+      { id: 4, category: "WORKOUT", start_date_local: "2026-10-10T00:00:00", type: "Ride", load_target: 90 },
+      { id: 5, category: "WORKOUT", start_date_local: "2026-10-08T00:00:00", type: "Yoga", load_target: 10 },
+      { id: 6, category: "TARGET", start_date_local: "2026-10-05T00:00:00", load_target: 300 },
+    ]);
+    vi.mocked(icu.getActivities).mockResolvedValue([
+      {
+        id: "a1",
+        start_date_local: "2026-10-05T17:00:00",
+        type: "VirtualRide",
+        icu_training_load: 90,
+        paired_event_id: 1,
+        compliance: 110,
+      },
+      {
+        id: "a2",
+        start_date_local: "2026-10-06T17:00:00",
+        type: "Run",
+        icu_training_load: 25,
+        paired_event_id: 2,
+        compliance: 80,
+      },
+      { id: "a3", start_date_local: "2026-10-07T17:00:00", type: "VirtualRide", icu_training_load: 60, compliance: 0 },
+      { id: "a4", start_date_local: "2026-10-07T07:00:00", type: "Yoga", icu_training_load: 20 },
+    ]);
+
+    const r = await computeLoadTracker({ weeksBefore: 0, weeksAfter: 1 }, "2026-10-08");
+
+    expect(r.weeks[0].plan_compliance).toEqual({
+      planned_workouts: 4,
+      completed_workouts: 2,
+      missed_workouts: 1,
+      workouts_still_to_do: 1,
+      unplanned_activities: 1,
+      avg_compliance_pct: 95,
+    });
+    expect(r.weeks[1].plan_compliance.planned_workouts).toBe(0);
+    expect(r.weeks[1].plan_compliance.avg_compliance_pct).toBeNull();
+  });
 });

@@ -7,7 +7,7 @@
 3. `reference_ranges` describe the state of a value: report the label and its meaning.
 4. General knowledge comes last and never overrides the above.
 
-`get_recovery_index` returns its own `interpretation_guidance` with decision rules on the Recovery Index. Those rules are not the basis for decisions here: use the readiness rule, and take from `get_recovery_index` only the severe flags and which metric moved.
+From `get_recovery_index` take only the severe flags and which metric moved; it is not the basis for decisions.
 
 ## Thresholds
 
@@ -32,7 +32,6 @@ When a tool returns little or nothing, check these before concluding there is no
 - Subjective wellness (mood, motivation, fatigue, soreness, stress, injury) must be enabled in the athlete's wellness fields. The scales run from 1 to 4, where 1 is the best value.
 - `get_fatigue_resistance` needs the kJ threshold `after_kj0` in the sport settings; curves can take minutes to recompute after a change.
 - Decoupling and dFRC need a power stream.
-- DFA α1 thresholds need beat-to-beat RR data from a chest strap; the tool is not registered by default.
 
 ## References
 

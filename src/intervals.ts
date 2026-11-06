@@ -153,8 +153,6 @@ export const searchActivities = (query: string, limit = 10) =>
 export const getActivity = (id: string, intervals = true) => api<Activity>(G, act(id, `?intervals=${intervals}`));
 export const getActivityStreams = (id: string, types: string[], includeDefaults?: boolean) =>
   api<ActivityStreams>(G, act(id, `/streams${qs({ types, includeDefaults })}`));
-export const getActivityPowerCurve = (id: string, fatigue?: "kj0" | "kj1") =>
-  api<CurveResponse>(G, act(id, `/power-curve${qs({ fatigue })}`));
 export const getActivityPaceCurve = (id: string, gap?: boolean) =>
   api<CurveResponse>(G, act(id, `/pace-curve${qs({ gap })}`));
 export const getActivityHRCurve = (id: string) => api<CurveResponse>(G, act(id, "/hr-curve"));
