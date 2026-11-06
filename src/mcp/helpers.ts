@@ -5,6 +5,8 @@ export type ServerOptions = {
   allowAnyLocalPath?: boolean;
   /** If set, upload_activity file_path must resolve inside this directory. */
   uploadDir?: string;
+  /** Toolsets to register (see mcp/toolsets.ts); undefined registers all of them. */
+  toolsets?: readonly string[];
 };
 
 export type ToolResult = { content: { type: "text"; text: string }[]; isError?: boolean };

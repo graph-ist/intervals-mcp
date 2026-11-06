@@ -4,6 +4,7 @@ import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/
 import express from "express";
 import * as icu from "./intervals.js";
 import { initTimeZone } from "./mcp/helpers.js";
+import { DEFAULT_REMOTE_TOOLSETS, parseToolsets } from "./mcp/toolsets.js";
 import { createServer } from "./server.js";
 
 const apiKey = process.env.INTERVALS_API_KEY;
@@ -30,7 +31,14 @@ icu.configure(apiKey, athleteId);
 void initTimeZone(process.env.INTERVALS_TIMEZONE, icu.getAthlete);
 
 // Remote clients cannot read the server's disk: local paths are allowed only inside UPLOAD_DIR
-const serverOptions = { allowAnyLocalPath: false, uploadDir: process.env.UPLOAD_DIR };
+let toolsets: string[];
+try {
+  toolsets = parseToolsets(process.env.INTERVALS_TOOLSETS, DEFAULT_REMOTE_TOOLSETS);
+} catch (err) {
+  console.error(err instanceof Error ? err.message : err);
+  process.exit(1);
+}
+const serverOptions = { allowAnyLocalPath: false, uploadDir: process.env.UPLOAD_DIR, toolsets };
 
 const app = express();
 
@@ -100,13 +108,14 @@ app.delete("/mcp", methodNotAllowed);
 
 // Health check (Render pings / by default)
 const { toolCount, promptCount, version } = createServer(serverOptions);
+const health = { status: "ok", version, tools: toolCount, prompts: promptCount, toolsets };
 
 app.get("/", (_req, res) => {
-  res.json({ status: "ok", version, tools: toolCount, prompts: promptCount });
+  res.json(health);
 });
 
 app.get("/health", (_req, res) => {
-  res.json({ status: "ok", version, tools: toolCount, prompts: promptCount });
+  res.json(health);
 });
 
 const httpServer = app.listen(port, () => {

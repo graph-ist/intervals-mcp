@@ -14,6 +14,7 @@ import { registerGearTools } from "./mcp/tools/gear.js";
 import { registerSocialTools } from "./mcp/tools/social.js";
 import { registerWellnessTools } from "./mcp/tools/wellness.js";
 import { registerWorkoutTools } from "./mcp/tools/workouts.js";
+import { toolsetOf } from "./mcp/toolsets.js";
 
 export type { ServerOptions } from "./mcp/helpers.js";
 
@@ -32,6 +33,7 @@ export function createServer(opts: ServerOptions = { allowAnyLocalPath: true }):
   toolCount: number;
   promptCount: number;
   version: string;
+  toolsets: string[];
 } {
   const server = new McpServer({
     name: "intervals-icu",
@@ -44,9 +46,13 @@ export function createServer(opts: ServerOptions = { allowAnyLocalPath: true }):
   const registerTool = server.tool.bind(server) as (...args: unknown[]) => unknown;
   const registerPrompt = server.prompt.bind(server) as (...args: unknown[]) => unknown;
   const patchable = server as unknown as { tool: typeof registerTool; prompt: typeof registerPrompt };
+  const enabled = opts.toolsets ? new Set(opts.toolsets) : null;
   patchable.tool = (...args: unknown[]) => {
-    toolCount++;
     const name = String(args[0]);
+    const toolset = toolsetOf(name);
+    if (!toolset) throw new Error(`Tool ${name} has no toolset: add it to src/mcp/toolsets.ts`);
+    if (enabled && !enabled.has(toolset)) return undefined;
+    toolCount++;
     if (args.length === 4) {
       const readOnly = READ_ONLY_TOOL.test(name);
       args.splice(3, 0, {
@@ -74,5 +80,11 @@ export function createServer(opts: ServerOptions = { allowAnyLocalPath: true }):
   registerSocialTools(server);
   registerFileTools(server, opts);
 
-  return { mcpServer: server, toolCount, promptCount, version: VERSION };
+  return {
+    mcpServer: server,
+    toolCount,
+    promptCount,
+    version: VERSION,
+    toolsets: opts.toolsets ? [...opts.toolsets] : ["all"],
+  };
 }

@@ -66,8 +66,27 @@ The server is a plain Node.js 22 process. A public HTTPS endpoint is needed only
 | `INTERVALS_ATHLETE_ID` | No | `0` (current user) | intervals.icu athlete ID |
 | `MCP_AUTH_TOKEN` | Yes (HTTP only) | | Token required on `/mcp`. At least 32 characters, otherwise the server refuses to start: `openssl rand -hex 32` |
 | `INTERVALS_TIMEZONE` | No | athlete profile `timezone` | IANA time zone (e.g. `Europe/Rome`) used for "today" and date ranges. Without it the server reads the zone from the athlete profile at startup, and uses the process zone until then or if that fails |
+| `INTERVALS_TOOLSETS` | No | HTTP: `core,planning`; stdio: `all` | Comma-separated toolsets to register (see [Toolsets](#toolsets)), or `all`. An unknown name stops startup |
 | `UPLOAD_DIR` | No | | HTTP only: directory from which `upload_activity` may read local files. Without it, remote uploads accept only `file_base64` |
 | `PORT` | No | `3001` | HTTP port (`npm run serve` only) |
+
+## Toolsets
+
+Every tool belongs to one toolset, defined in [src/mcp/toolsets.ts](src/mcp/toolsets.ts). `INTERVALS_TOOLSETS` chooses which ones the server registers, so a client loads only the definitions it needs: with all 147 tools the list costs about 30,000 tokens per conversation, with the remote default about 15,000 (estimated as characters / 3.5).
+
+| Toolset | Tools | Contents |
+|---|---|---|
+| `core` | 54 | Readiness and analysis tools, wellness, activity reads and metadata, athlete and sport settings, calendar events |
+| `planning` | 21 | Training plans, bulk calendar changes, workout library |
+| `curves` | 19 | Power, pace and HR curves, histograms, best efforts |
+| `activity_edit` | 8 | Streams and interval editing, deletions, bulk manual activities |
+| `files` | 9 | Uploads, downloads and CSV exports |
+| `gear` | 9 | Gear and maintenance reminders |
+| `social` | 15 | Routes, chats and activity comments |
+| `custom` | 7 | Custom charts, fields and panels |
+| `coach` | 5 | Tools for coaching several athletes |
+
+The HTTP transport registers `core,planning` unless told otherwise; stdio registers everything. `/health` reports the active toolsets and the tool count. The tables below list all tools, whichever toolset they are in.
 
 ## Tools (147)
 

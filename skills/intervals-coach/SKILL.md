@@ -42,4 +42,6 @@ The server exposes the same four as MCP prompts (`morning_check`, `weekly_review
 | How well do I hold power under fatigue? | `get_fatigue_resistance` (needs `after_kj0` in sport settings) |
 | Metabolic profile, VLaMax | `get_metabolic_profile` |
 
+The server may register only some toolsets (by default `core` and `planning` on the remote connector). If a tool the user needs is missing (curves, gear, files, chats), say which toolset holds it (`curves`, `gear`, `files`, `social`) and that it is enabled with `INTERVALS_TOOLSETS`; do not imitate it with other tools.
+
 Prefer one analysis tool over assembling the same answer from raw streams: the analysis tools already fetch, align and bound the data.
