@@ -290,12 +290,12 @@ Available through the prompt picker in claude.ai and Claude Desktop.
 
 | Prompt | When | What it does |
 |---|---|---|
-| `morning_check` | Morning | Calls `get_readiness_check` and reports its case and severe flags; a specific, reversible change only when the case is not "ok" or a severe flag is present |
-| `weekly_review` | Sunday evening | Primary decision tool: review of the past week and planning of the next one, with explicit exception criteria |
-| `activity_review` | After a session | Finds the latest Ride, Run or Swim and analyses metrics, zones, pacing, decoupling and dFRC |
-| `load_tracker` | Any time | Calls `get_load_tracker` and draws weekly columns for the previous week, the current one and the next 11, filled with the TSS done in swim, bike, run and gym against the target. Weeks without a target stay empty |
+| `morning_check` | Morning | Calls `get_readiness_check` and follows the skill's morning check |
+| `weekly_review` | Sunday evening | Lists the tools and dates of the week under review and follows the skill's weekly review and planning |
+| `activity_review` | After a session | Finds the latest Ride, Run or Swim and follows the skill's activity review, including the rep-by-rep comparison |
+| `load_tracker` | Any time | Calls `get_load_tracker` and draws the weekly columns as `chart_hint` describes |
 
-The prompt texts are written in Italian.
+The prompts are short entry points: the rules of each protocol live only in the [skill](#skill), so the two cannot drift apart. Each prompt keeps a one-line fallback for clients without the skill. The prompt texts are written in Italian.
 
 ## Skill
 
