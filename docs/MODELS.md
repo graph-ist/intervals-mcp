@@ -315,7 +315,7 @@ La sigmoide è centrata a $\bar{z}_w = -0.5$ (non a zero) per dare RI ≈ 70 qua
 | 40–54 | Strained — un giorno isolato non cambia il piano; ≥3 giorni con ≥2 metriche indipendenti convergenti: ridurre l'intensità |
 | < 40 | At risk — riposo attivo o sessione Z1 breve |
 
-Le fasce coincidono con le regole di `interpretation_guidance` e del prompt `morning_check` (55–80 senza anomalie multigiorno: piano eseguito).
+Le fasce sono usate solo per descrivere il RI: le decisioni seguono la regola di readiness della sezione 4bis. Dalla versione 0.4.0 la risposta non contiene più `interpretation_guidance`, che dava regole di decisione sul RI; al suo posto un campo `decision_basis` rimanda a `get_readiness_check`.
 
 #### Red flags (allarmi)
 
@@ -665,6 +665,8 @@ $$
 ---
 
 ## 9. `get_dfa_alpha1` — DFA α1 Threshold Detection
+
+> **Non implementato nel server.** Il codice, mai registrato come strumento, è stato rimosso nella versione 0.4.0 e si recupera dal commit `2af8bb6` (`src/analytics/dfa-alpha1.ts`). La sezione resta come riferimento per i lavori futuri che richiedono gli intervalli RR.
 
 ### Modello
 

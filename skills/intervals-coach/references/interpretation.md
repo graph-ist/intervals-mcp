@@ -7,7 +7,7 @@
 3. `reference_ranges` describe the state of a value: report the label and its meaning.
 4. General knowledge comes last and never overrides the above.
 
-`get_recovery_index` returns its own `interpretation_guidance` with decision rules on the Recovery Index. Those rules are not the basis for decisions here: use the readiness rule, and take from `get_recovery_index` only the severe flags and which metric moved.
+From `get_recovery_index` take only the severe flags and which metric moved; it is not the basis for decisions.
 
 ## Thresholds
 

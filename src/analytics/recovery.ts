@@ -66,7 +66,7 @@ function stats(arr: number[]): { mean: number; sd: number } {
   return { mean, sd: Math.max(Math.sqrt(variance), 0.001) };
 }
 
-// Status bands follow the decision rules in interpretation_guidance: 55-80 without anomalies means executing the plan
+// Status bands: >= 80 Recovered, 55-79 Moderate, 40-54 Strained, < 40 At risk
 export function recoveryStatus(ri: number): "Recovered" | "Moderate" | "Strained" | "At risk" {
   if (ri >= 80) return "Recovered";
   if (ri >= 55) return "Moderate";
@@ -273,37 +273,7 @@ export async function computeRecoveryIndex(days: number, daysAgo: (n: number) =>
         { range: "≥ 140/≥ 90", label: "Ipertensione stadio 2", meaning: "Trattamento necessario" },
       ],
     },
-    interpretation_guidance: {
-      principle:
-        "La varianza giornaliera dell'HRV è ±15-20% anche a carico stabile (Plews et al. 2012, IJSPP). Un singolo punto dati NON è sufficiente per modificare il piano settimanale.",
-      decision_rules: [
-        {
-          condition: "RI 55-80, nessuna anomalia multigiorno",
-          action: "Esegui il piano settimanale come previsto. Nessun intervento.",
-        },
-        {
-          condition: "RI 40-55 per un singolo giorno, senza pattern",
-          action: "Nota il dato, ma esegui il piano. Un giorno isolato è probabilmente rumore.",
-        },
-        {
-          condition: "RI < 55 per ≥3 giorni consecutivi con ≥2 metriche indipendenti convergenti",
-          action:
-            "Segnale a media frequenza. Considerare riduzione intensità (non volume): sostituire sessioni Z4+ con Z2.",
-        },
-        {
-          condition: "RI < 40 oggi + red flag su metriche indipendenti",
-          action: "Eccezione giustificata. Riposo attivo o sessione Z1 breve. Rivalutare nel weekly_review.",
-        },
-        {
-          condition: "RI > 80 stabile per ≥3 giorni",
-          action:
-            "Non aumentare il carico impulsivamente. La pianificazione resta settimanale. Annotare per il prossimo weekly_review.",
-        },
-      ],
-      asymmetry_note:
-        "Il costo di un falso positivo (saltare una sessione fattibile) è basso. Il costo di un falso negativo (ignorare overreaching reale) è alto. Questo giustifica un approccio conservativo, ma NON un processo decisionale quotidiano fine-grained.",
-      workflow:
-        "weekly_review = strumento primario di pianificazione. morning_check = trigger per eccezioni documentate nel weekly_review. NON usare il RI giornaliero come oracolo.",
-    },
+    decision_basis:
+      "The Recovery Index is this server's own index, not an intervals.icu value: use get_readiness_check for daily decisions and take from here only the severe flags (HRV or resting HR z below -2, SpO2 below 93%) and which metric moved.",
   };
 }

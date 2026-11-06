@@ -1,18 +1,84 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import * as icu from "../../intervals.js";
-import { curveOptsShape, dateStr, daysAgo, filtersArg, safe, today } from "../helpers.js";
+import { curveOptsShape, dateStr, daysAgo, filtersArg, safe, today, toolError } from "../helpers.js";
 
 export function registerCurveTools(server: McpServer): void {
-  // --- get_activity_power_curve ---
+  // --- get_athlete_curves ---
   server.tool(
-    "get_activity_power_curve",
-    "Get power curve (best efforts at each duration) for an activity",
+    "get_athlete_curves",
+    "Athlete power, pace or heart-rate curves (season bests, recent, fatigued). Use f1/f2/f3 filter sets to compare curves (e.g. indoor vs outdoor).",
     {
-      activity_id: z.string().describe("Activity ID"),
-      fatigue: z.enum(["kj0", "kj1"]).optional().describe("Return the athlete's predefined fatigued curve"),
+      kind: z.enum(["power", "pace", "hr"]).describe("Which curves"),
+      sport: z.string().optional().describe("Sport type (default Ride for power and hr, Run for pace)"),
+      curves: z
+        .array(z.string())
+        .optional()
+        .describe(
+          "Curve specs: 1y (default), 2y, 42d, s0 (current season), s1, all, r.2025-01-01.2025-03-31 (date range). Power only: add -kj0/-kj1 for fatigued curves",
+        ),
+      gap: z.boolean().optional().describe("Pace only: gradient adjusted pace curves"),
+      pm_type: z
+        .enum(["MS_2P", "MORTON_3P", "FFT_CURVES", "ECP", "CS"])
+        .optional()
+        .describe("Model to fit: MS_2P, MORTON_3P, FFT_CURVES or ECP for power; CS (critical speed) for pace"),
+      ...curveOptsShape,
     },
-    ({ activity_id, fatigue }) => safe(() => icu.getActivityPowerCurve(activity_id, fatigue)),
+    ({ kind, sport, curves, gap, pm_type, newest, include_ranks, sub_max_efforts, filters, f1, f2, f3 }) => {
+      if (gap != null && kind !== "pace") return Promise.resolve(toolError("gap applies only to kind=pace."));
+      if (pm_type && (kind === "hr" || (kind === "pace") !== (pm_type === "CS"))) {
+        return Promise.resolve(toolError("pm_type: use MS_2P, MORTON_3P, FFT_CURVES or ECP with power, CS with pace."));
+      }
+      const specs = curves ?? ["1y"];
+      const common = { newest, subMaxEfforts: sub_max_efforts, filters, f1, f2, f3 };
+      if (kind === "power") {
+        return safe(() =>
+          icu.getPowerCurves(sport ?? "Ride", specs, undefined, {
+            ...common,
+            pmType: pm_type,
+            includeRanks: include_ranks,
+          }),
+        );
+      }
+      if (kind === "pace") {
+        return safe(() =>
+          icu.getPaceCurves(sport ?? "Run", specs, { ...common, gap, pmType: pm_type, includeRanks: include_ranks }),
+        );
+      }
+      return safe(() => icu.getHRCurves(sport ?? "Ride", specs, common));
+    },
+  );
+
+  // --- get_activity_curves_range ---
+  server.tool(
+    "get_activity_curves_range",
+    "Best power or heart rate at given durations, or best pace at given distances, for each activity in a date range. Use to track progression over time (e.g. 5-min power across all rides).",
+    {
+      kind: z.enum(["power", "pace", "hr"]).describe("Which metric"),
+      oldest: dateStr.describe("Start date YYYY-MM-DD"),
+      newest: dateStr.describe("End date YYYY-MM-DD"),
+      sport: z.string().optional().describe("Sport type (default Ride for power and hr, Run for pace)"),
+      secs: z.array(z.number()).optional().describe("Power and hr: durations in seconds (e.g. [5, 60, 300, 1200])"),
+      distances: z.array(z.number()).optional().describe("Pace: distances in meters (e.g. [400, 1000, 5000])"),
+      gap: z.boolean().optional().describe("Pace only: gradient adjusted pace"),
+      fatigue: z
+        .enum(["kj0", "kj1"])
+        .optional()
+        .describe("Power only: the athlete's predefined fatigued curves (requires sport)"),
+      filters: filtersArg.describe("Only activities matching all these filters"),
+    },
+    ({ kind, oldest, newest, sport, secs, distances, gap, fatigue, filters }) => {
+      if (kind === "pace" && secs) return Promise.resolve(toolError("Use distances, not secs, with kind=pace."));
+      if (kind !== "pace" && (distances || gap != null)) {
+        return Promise.resolve(toolError("distances and gap apply only to kind=pace."));
+      }
+      if (fatigue && kind !== "power") return Promise.resolve(toolError("fatigue applies only to kind=power."));
+      if (kind === "power")
+        return safe(() => icu.getActivityPowerCurvesRange(oldest, newest, sport, secs, { filters, fatigue }));
+      if (kind === "pace")
+        return safe(() => icu.getActivityPaceCurvesRange(oldest, newest, sport, distances, gap, filters));
+      return safe(() => icu.getActivityHRCurvesRange(oldest, newest, sport, secs, filters));
+    },
   );
 
   // --- get_activity_pace_curve ---
@@ -40,85 +106,6 @@ export function registerCurveTools(server: McpServer): void {
     "Get power vs heart rate plot for an activity (aerobic efficiency/decoupling)",
     { activity_id: z.string().describe("Activity ID") },
     ({ activity_id }) => safe(() => icu.getActivityPowerVsHR(activity_id)),
-  );
-
-  // --- get_power_curves ---
-  server.tool(
-    "get_power_curves",
-    "Get power curves (season bests, recent, etc.). Use f1/f2/f3 filter sets to compare curves (e.g. indoor vs outdoor).",
-    {
-      sport: z.string().optional().describe("Sport type: Ride (default), Run, Swim, etc."),
-      curves: z
-        .array(z.string())
-        .optional()
-        .describe(
-          "Curve specs: 1y, 2y, 42d, s0 (current season), s1, all, r.2025-01-01.2025-03-31 (date range). Add -kj0/-kj1 suffix for fatigued curves",
-        ),
-      pm_type: z.enum(["MS_2P", "MORTON_3P", "FFT_CURVES", "ECP"]).optional().describe("Power model to fit"),
-      ...curveOptsShape,
-    },
-    ({ sport, curves, pm_type, newest, include_ranks, sub_max_efforts, filters, f1, f2, f3 }) =>
-      safe(() =>
-        icu.getPowerCurves(sport ?? "Ride", curves ?? ["1y"], undefined, {
-          pmType: pm_type,
-          newest,
-          includeRanks: include_ranks,
-          subMaxEfforts: sub_max_efforts,
-          filters,
-          f1,
-          f2,
-          f3,
-        }),
-      ),
-  );
-
-  // --- get_pace_curves ---
-  server.tool(
-    "get_pace_curves",
-    "Get pace curves (running, swimming). Use f1/f2/f3 filter sets to compare curves.",
-    {
-      sport: z.string().optional().describe("Sport type: Run (default), Swim, etc."),
-      curves: z.array(z.string()).optional().describe("Curve specs: 1y, 42d, s0, s1, all, r.YYYY-MM-DD.YYYY-MM-DD"),
-      gap: z.boolean().optional().describe("Gradient adjusted pace curves"),
-      pm_type: z.enum(["CS"]).optional().describe("Critical speed model"),
-      ...curveOptsShape,
-    },
-    ({ sport, curves, gap, pm_type, newest, include_ranks, sub_max_efforts, filters, f1, f2, f3 }) =>
-      safe(() =>
-        icu.getPaceCurves(sport ?? "Run", curves ?? ["1y"], {
-          gap,
-          pmType: pm_type,
-          newest,
-          includeRanks: include_ranks,
-          subMaxEfforts: sub_max_efforts,
-          filters,
-          f1,
-          f2,
-          f3,
-        }),
-      ),
-  );
-
-  // --- get_hr_curves ---
-  server.tool(
-    "get_hr_curves",
-    "Get heart rate curves. Use f1/f2/f3 filter sets to compare curves.",
-    {
-      sport: z.string().optional().describe("Sport type: Ride (default), Run, Swim, etc."),
-      curves: z.array(z.string()).optional().describe("Curve specs: 1y, 42d, s0, s1, all, r.YYYY-MM-DD.YYYY-MM-DD"),
-      ...curveOptsShape,
-    },
-    ({ sport, curves, newest, sub_max_efforts, filters, f1, f2, f3 }) =>
-      safe(() =>
-        icu.getHRCurves(sport ?? "Ride", curves ?? ["1y"], {
-          newest,
-          subMaxEfforts: sub_max_efforts,
-          filters,
-          f1,
-          f2,
-          f3,
-        }),
-      ),
   );
 
   // --- get_power_hr_curve ---
@@ -165,25 +152,6 @@ export function registerCurveTools(server: McpServer): void {
       ),
   );
 
-  // --- get_activity_power_curves_range ---
-  server.tool(
-    "get_activity_power_curves_range",
-    "Get best power for each activity in a date range at specific durations. Use to track power progression over time (e.g. see 5min power trend across all rides).",
-    {
-      oldest: dateStr.describe("Start date YYYY-MM-DD"),
-      newest: dateStr.describe("End date YYYY-MM-DD"),
-      sport: z.string().optional().describe("Sport type: Ride (default), Run, etc."),
-      secs: z.array(z.number()).optional().describe("Specific durations in seconds (e.g. [5, 60, 300, 1200])"),
-      filters: filtersArg.describe("Only activities matching all these filters"),
-      fatigue: z
-        .enum(["kj0", "kj1"])
-        .optional()
-        .describe("Use the athlete's predefined fatigued curves (requires sport)"),
-    },
-    ({ oldest, newest, sport, secs, filters, fatigue }) =>
-      safe(() => icu.getActivityPowerCurvesRange(oldest, newest, sport, secs, { filters, fatigue })),
-  );
-
   // --- get_activity_power_histogram ---
   server.tool(
     "get_activity_power_histogram",
@@ -225,37 +193,6 @@ export function registerCurveTools(server: McpServer): void {
     ({ activity_id }) => safe(() => icu.getActivityTimeAtHR(activity_id)),
   );
 
-  // --- get_activity_pace_curves_range ---
-  server.tool(
-    "get_activity_pace_curves_range",
-    "Best pace for each activity in a date range at specific distances. Use to track pace progression over time.",
-    {
-      oldest: dateStr.describe("Start date YYYY-MM-DD"),
-      newest: dateStr.describe("End date YYYY-MM-DD"),
-      sport: z.string().optional().describe("Sport type: Run (default), Swim, etc."),
-      distances: z.array(z.number()).optional().describe("Distances in meters (e.g. [400, 1000, 5000])"),
-      gap: z.boolean().optional().describe("Use gradient adjusted pace"),
-      filters: filtersArg.describe("Only activities matching all these filters"),
-    },
-    ({ oldest, newest, sport, distances, gap, filters }) =>
-      safe(() => icu.getActivityPaceCurvesRange(oldest, newest, sport, distances, gap, filters)),
-  );
-
-  // --- get_activity_hr_curves_range ---
-  server.tool(
-    "get_activity_hr_curves_range",
-    "Best heart rate for each activity in a date range at specific durations. Use to track HR progression over time.",
-    {
-      oldest: dateStr.describe("Start date YYYY-MM-DD"),
-      newest: dateStr.describe("End date YYYY-MM-DD"),
-      sport: z.string().optional().describe("Sport type: Ride (default), Run, etc."),
-      secs: z.array(z.number()).optional().describe("Durations in seconds (e.g. [60, 300, 1200])"),
-      filters: filtersArg.describe("Only activities matching all these filters"),
-    },
-    ({ oldest, newest, sport, secs, filters }) =>
-      safe(() => icu.getActivityHRCurvesRange(oldest, newest, sport, secs, filters)),
-  );
-
   // --- get_activity_model ---
   server.tool(
     "get_activity_model",
@@ -270,14 +207,14 @@ export function registerCurveTools(server: McpServer): void {
   // --- get_activity_power_curves ---
   server.tool(
     "get_activity_power_curves",
-    "Get power curves of one activity for several streams (e.g. watts, watts_per_kg) and fresh/fatigued variants in one call",
+    "Power curve (best power at each duration) of one activity; optionally for several streams (e.g. watts, watts_per_kg) and fresh/fatigued variants in one call",
     {
       activity_id: z.string().describe("Activity ID"),
       types: z.array(z.string()).optional().describe("Streams (default watts)"),
       fatigue: z
         .array(z.enum(["normal", "kj0", "kj1"]))
         .optional()
-        .describe("Normal and/or fatigued curves"),
+        .describe("Normal and/or fatigued curves (default normal)"),
     },
     ({ activity_id, types, fatigue }) => safe(() => icu.getActivityPowerCurves(activity_id, types, fatigue)),
   );

@@ -37,4 +37,4 @@ The only exceptions outside the rule are in the tool's `severe_flags`, taken fro
 
 ## What not to use
 
-The Recovery Index (RI) and its `interpretation_guidance` are this server's own construct, not intervals.icu values. Do not decide on them, and do not report the RI in place of intervals.icu's readiness. If the user asks for it, report it as a secondary index and say so.
+The Recovery Index (RI) is this server's own construct, not intervals.icu values. Do not decide on them, and do not report the RI in place of intervals.icu's readiness. If the user asks for it, report it as a secondary index and say so.

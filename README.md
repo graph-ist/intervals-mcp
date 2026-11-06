@@ -3,7 +3,7 @@
 [![CI](https://github.com/graph-ist/intervals-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/graph-ist/intervals-mcp/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-MCP server for [intervals.icu](https://intervals.icu). It exposes 147 tools covering the whole documented public API (except the OAuth-only `disconnect-app` endpoint), including ten analysis tools, and four prompts.
+MCP server for [intervals.icu](https://intervals.icu). It exposes 142 tools covering the whole documented public API (except the OAuth-only `disconnect-app` endpoint), including ten analysis tools, and four prompts.
 
 Two transports are provided: stdio for local clients such as Claude Desktop, and Streamable HTTP for remote clients such as claude.ai custom connectors.
 
@@ -72,13 +72,13 @@ The server is a plain Node.js 22 process. A public HTTPS endpoint is needed only
 
 ## Toolsets
 
-Every tool belongs to one toolset, defined in [src/mcp/toolsets.ts](src/mcp/toolsets.ts). `INTERVALS_TOOLSETS` chooses which ones the server registers, so a client loads only the definitions it needs: with all 147 tools the list costs about 30,000 tokens per conversation, with the remote default about 15,000 (estimated as characters / 3.5).
+Every tool belongs to one toolset, defined in [src/mcp/toolsets.ts](src/mcp/toolsets.ts). `INTERVALS_TOOLSETS` chooses which ones the server registers, so a client loads only the definitions it needs: with all 142 tools the list costs about 28,000 tokens per conversation, with the remote default about 15,000 (estimated as characters / 3.5).
 
 | Toolset | Tools | Contents |
 |---|---|---|
 | `core` | 54 | Readiness and analysis tools, wellness, activity reads and metadata, athlete and sport settings, calendar events |
 | `planning` | 21 | Training plans, bulk calendar changes, workout library |
-| `curves` | 19 | Power, pace and HR curves, histograms, best efforts |
+| `curves` | 14 | Power, pace and HR curves, histograms, best efforts |
 | `activity_edit` | 8 | Streams and interval editing, deletions, bulk manual activities |
 | `files` | 9 | Uploads, downloads and CSV exports |
 | `gear` | 9 | Gear and maintenance reminders |
@@ -88,7 +88,7 @@ Every tool belongs to one toolset, defined in [src/mcp/toolsets.ts](src/mcp/tool
 
 The HTTP transport registers `core,planning` unless told otherwise; stdio registers everything. `/health` reports the active toolsets and the tool count. The tables below list all tools, whichever toolset they are in.
 
-## Tools (147)
+## Tools (142)
 
 ### Athlete and settings
 
@@ -148,15 +148,13 @@ The HTTP transport registers `core,planning` unless told otherwise; stdio regist
 
 | Tool | Description |
 |---|---|
-| `get_power_curves` / `get_pace_curves` / `get_hr_curves` | Athlete curves (season, recent, fatigued) |
+| `get_athlete_curves` | Athlete power, pace or HR curves (`kind`): season, recent, fatigued, with filter sets for comparisons |
 | `get_power_hr_curve` | Aerobic efficiency trend |
 | `get_mmp_model` | MMP model (CP, W', pMax) |
 | `get_pace_distances` | Distances used for pace curves |
-| `get_activity_power_curve` / `get_activity_pace_curve` / `get_activity_hr_curve` | Curves of a single activity |
-| `get_activity_power_curves` | Multi-stream and fresh/fatigued power curves in one call |
-| `get_activity_power_curves_range` | Power curves over a date range (activity comparison) |
-| `get_activity_pace_curves_range` | Best pace per distance over a date range |
-| `get_activity_hr_curves_range` | Best HR per duration over a date range |
+| `get_activity_power_curves` | Power curve of one activity, optionally for several streams and fresh/fatigued variants |
+| `get_activity_pace_curve` / `get_activity_hr_curve` | Pace or HR curve of one activity |
+| `get_activity_curves_range` | Best power or HR per duration, or best pace per distance (`kind`), for each activity in a date range |
 | `get_activity_best_efforts` | Best efforts by duration or distance |
 | `get_activity_power_vs_hr` | Raw power vs HR scatter |
 | `get_activity_power_histogram` | Power distribution |
@@ -194,7 +192,7 @@ Which tool answers which question:
 | How well do I hold power under fatigue? | `get_fatigue_resistance` |
 | Am I on track with the weekly TSS I planned? | `get_load_tracker` |
 
-`get_dfa_alpha1` (aerobic and anaerobic thresholds from DFA α1, Rogers et al., 2021) is implemented in [src/analytics/dfa-alpha1.ts](src/analytics/dfa-alpha1.ts), but its registration is commented out in [src/mcp/tools/analysis.ts](src/mcp/tools/analysis.ts) because it needs beat-to-beat RR data from a chest strap. To enable it, uncomment the registration and the import of `computeDfaAnalysis`, and raise the expected tool count in the server test.
+DFA α1 threshold detection is not part of the server: the unregistered implementation was removed in 0.4.0. It can be recovered from commit `2af8bb6` (`src/analytics/dfa-alpha1.ts`) for the future works below that need it.
 
 ### Wellness
 
@@ -298,7 +296,7 @@ The prompt texts are written in Italian.
 
 ## Skill
 
-[skills/intervals-coach](skills/intervals-coach) is an Agent Skill that carries the coaching protocols behind the four prompts: when to deviate from the weekly plan, which tools each protocol calls, how to read `reference_ranges` and `interpretation_guidance`, and when calendar writes need the user's confirmation. It loads only when a request is about training, so the protocols do not weigh on every conversation the way tool descriptions do.
+[skills/intervals-coach](skills/intervals-coach) is an Agent Skill that carries the coaching protocols behind the four prompts: when to deviate from the weekly plan, which tools each protocol calls, how to read `reference_ranges`, and when calendar writes need the user's confirmation. It loads only when a request is about training, so the protocols do not weigh on every conversation the way tool descriptions do.
 
 - **Claude Code**: copy the folder to `~/.claude/skills/intervals-coach/` (all projects) or `.claude/skills/intervals-coach/` (one project).
 - **claude.ai and Claude Desktop**: zip the `intervals-coach` folder and upload it as a custom skill in the app's skills settings.
@@ -339,7 +337,6 @@ src/
 │       └── gear.ts         social.ts
 └── analytics/          # pure computation behind the analysis tools
     ├── decoupling.ts           # aerobic decoupling Pw:Hr
-    ├── dfa-alpha1.ts           # DFA α1 threshold detection (not registered)
     ├── dfrc.ts                 # dFRC / W'bal (Skiba)
     ├── fatigue-resistance.ts   # durability: fresh vs fatigued curves
     ├── metabolic.ts            # metabolic profile (VLaMax, Coggan)
