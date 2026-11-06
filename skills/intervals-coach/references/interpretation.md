@@ -32,7 +32,6 @@ When a tool returns little or nothing, check these before concluding there is no
 - Subjective wellness (mood, motivation, fatigue, soreness, stress, injury) must be enabled in the athlete's wellness fields. The scales run from 1 to 4, where 1 is the best value.
 - `get_fatigue_resistance` needs the kJ threshold `after_kj0` in the sport settings; curves can take minutes to recompute after a change.
 - Decoupling and dFRC need a power stream.
-- DFA α1 thresholds need beat-to-beat RR data from a chest strap; the tool is not registered by default.
 
 ## References
 

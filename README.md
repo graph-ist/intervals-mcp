@@ -3,7 +3,7 @@
 [![CI](https://github.com/graph-ist/intervals-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/graph-ist/intervals-mcp/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-MCP server for [intervals.icu](https://intervals.icu). It exposes 142 tools covering the whole documented public API (except the OAuth-only `disconnect-app` endpoint), including ten analysis tools, and four prompts.
+MCP server for [intervals.icu](https://intervals.icu). It exposes 143 tools covering the whole documented public API (except the OAuth-only `disconnect-app` endpoint), including eleven analysis tools, and four prompts. Version 1.0.0 is the current feature-complete release: no further tools are planned.
 
 Two transports are provided: stdio for local clients such as Claude Desktop, and Streamable HTTP for remote clients such as claude.ai custom connectors.
 
@@ -72,11 +72,11 @@ The server is a plain Node.js 22 process. A public HTTPS endpoint is needed only
 
 ## Toolsets
 
-Every tool belongs to one toolset, defined in [src/mcp/toolsets.ts](src/mcp/toolsets.ts). `INTERVALS_TOOLSETS` chooses which ones the server registers, so a client loads only the definitions it needs: with all 142 tools the list costs about 28,000 tokens per conversation, with the remote default about 15,000 (estimated as characters / 3.5).
+Every tool belongs to one toolset, defined in [src/mcp/toolsets.ts](src/mcp/toolsets.ts). `INTERVALS_TOOLSETS` chooses which ones the server registers, so a client loads only the definitions it needs: with all 143 tools the list costs about 28,000 tokens per conversation, with the remote default about 15,600 (estimated as characters / 3.5).
 
 | Toolset | Tools | Contents |
 |---|---|---|
-| `core` | 54 | Readiness and analysis tools, wellness, activity reads and metadata, athlete and sport settings, calendar events |
+| `core` | 55 | Readiness and analysis tools, wellness, activity reads and metadata, athlete and sport settings, calendar events |
 | `planning` | 21 | Training plans, bulk calendar changes, workout library |
 | `curves` | 14 | Power, pace and HR curves, histograms, best efforts |
 | `activity_edit` | 8 | Streams and interval editing, deletions, bulk manual activities |
@@ -88,7 +88,7 @@ Every tool belongs to one toolset, defined in [src/mcp/toolsets.ts](src/mcp/tool
 
 The HTTP transport registers `core,planning` unless told otherwise; stdio registers everything. `/health` reports the active toolsets and the tool count. The tables below list all tools, whichever toolset they are in.
 
-## Tools (142)
+## Tools (143)
 
 ### Athlete and settings
 
@@ -177,7 +177,8 @@ Custom tools that compute physiological models on top of the API data. Formulas,
 | `get_fatigue_resistance` | Durability: fresh vs fatigued power curves, Fatigue Resistance Score, VO₂max retention (Maunder et al., 2021). Requires the kJ threshold `after_kj0` in the sport settings |
 | `get_polarization_analysis` | Time in zones, polarization index, comparison with the 80/20 model (Seiler, 2010; Stöggl & Sperlich, 2015) |
 | `get_longitudinal_trends` | Regression on EF, power, HRR, decoupling, CTL, HRV, resting HR, weight and sleep |
-| `get_load_tracker` | Load Tracker: weekly TSS for the previous week, the current week and the next 11 (about 3 months, Monday to Sunday). Only swim, bike, run and strength count; every other activity is noise and counts 0. Gym load is weighted with the athlete's Activity Types fitness % (60% by default). Per week: target (manual `targets` by date, else the weekly `TARGET` calendar event, else the load of planned workouts), TSS done per sport, completion %, remaining TSS and, for the current week, the daily cumulative TSS. Weeks without a target stay empty |
+| `get_load_tracker` | Load Tracker: weekly TSS for the previous week, the current week and the next 11 (about 3 months, Monday to Sunday). Only swim, bike, run and strength count; every other activity is noise and counts 0. Gym load is weighted with the athlete's Activity Types fitness % (60% by default). Per week: target (manual `targets` by date, else the weekly `TARGET` calendar event, else the load of planned workouts), TSS done per sport, completion %, remaining TSS and, for the current week, the daily cumulative TSS. `plan_compliance` per week: planned, completed, missed and still-to-do workouts, unplanned activities and the mean intervals.icu compliance % of the paired activities. Weeks without a target stay empty |
+| `get_cp_history` | Month-by-month CP, W' and Pmax from the intervals.icu power-duration models of each month's best efforts, with peak 5 s / 1 min / 5 min / 20 min power and the change over the window. A month without maximal efforts understates CP |
 
 Which tool answers which question:
 
@@ -191,8 +192,10 @@ Which tool answers which question:
 | Is my training well polarized? | `get_polarization_analysis` |
 | How well do I hold power under fatigue? | `get_fatigue_resistance` |
 | Am I on track with the weekly TSS I planned? | `get_load_tracker` |
+| Did I do the workouts I planned? | `get_load_tracker` (`plan_compliance`) |
+| Is the season shifting my CP, W' or sprint? | `get_cp_history` |
 
-DFA α1 threshold detection is not part of the server: the unregistered implementation was removed in 0.4.0. It can be recovered from commit `2af8bb6` (`src/analytics/dfa-alpha1.ts`) for the future works below that need it.
+DFA α1 threshold detection is not part of the server: the unregistered implementation was removed in 0.4.0. It can be recovered from commit `2af8bb6` (`src/analytics/dfa-alpha1.ts`) if beat-to-beat RR data from a chest strap become available.
 
 ### Wellness
 
@@ -346,7 +349,8 @@ src/
     ├── training-load.ts        # monotony, strain, ACWR
     ├── trends.ts               # longitudinal trends and HRR
     ├── utils.ts                # shared helpers (stream extraction, sport matching)
-    └── load-tracker.ts         # weekly TSS target vs done, per sport and day
+    ├── cp-history.ts           # month-by-month CP, W', Pmax from intervals.icu PD models
+    └── load-tracker.ts         # weekly TSS target vs done and plan compliance, per sport and day
 docs/
 └── MODELS.md           # mathematical models and literature (Italian)
 skills/
@@ -371,22 +375,6 @@ Tests live in `__tests__` folders next to the code they cover. Each registration
 | `Unknown toolset(s) ...` at startup | A name in `INTERVALS_TOOLSETS` is misspelled; the message lists the valid ones |
 | A tool from the tables is missing on the remote connector | Its toolset is not enabled: the HTTP default is `core,planning`. Add the toolset to `INTERVALS_TOOLSETS` (or use `all`) and restart; `/health` shows the active ones |
 | Dates are off by one day around midnight | Set `INTERVALS_TIMEZONE` (e.g. `Europe/Rome`) or the `timezone` in the intervals.icu profile |
-
-## Future works
-
-Planned analysis tools built on the endpoints that already exist, in order of priority.
-
-| Tool | What it will do | Data used |
-|---|---|---|
-| `project_form` | Project CTL/ATL/TSB over future days from the load of planned workouts: expected form on race day and taper check (42/7-day EWMA model) | `get_events` (load_target), wellness |
-| `get_pace_decoupling` | Pace:HR decoupling for runs without a power meter, with grade-adjusted pace on climbs | streams `velocity_smooth`, `gap`, `heartrate` |
-| `get_cp_history` | Month-by-month CP, W' and Pmax, to see whether the season shifts the curve | power curves per date range (`r.YYYY-MM-DD.YYYY-MM-DD`) with the PD model |
-| `get_durability` | Durability within a single long ride: power drop at fixed HR and DFA α1 drift between the first and last hour | streams, `interval-stats`, fatigued curves |
-| `get_interval_fade` | Rep-by-rep fade in an interval session: power, HR and decoupling per rep | activity intervals |
-| `get_plan_compliance` | Planned against executed per week: load, duration, the `compliance` field of activities | events, activities |
-| `get_hrv_threshold_history` | HRVT1/HRVT2 (DFA α1) over time from rides with RR intervals | stream `hrv` |
-
-Data prerequisites: the kJ threshold (`after_kj0`) set in the sport settings, RR recording ("Log HRV") enabled on the device with a chest strap, and the subjective wellness fields filled in.
 
 ## License
 

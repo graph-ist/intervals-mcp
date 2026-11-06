@@ -1,5 +1,6 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
+import { computeCpHistory } from "../../analytics/cp-history.js";
 import { computeDecoupling } from "../../analytics/decoupling.js";
 import { computeDfrc } from "../../analytics/dfrc.js";
 import { computeFatigueResistance } from "../../analytics/fatigue-resistance.js";
@@ -185,6 +186,37 @@ export function registerAnalysisTools(server: McpServer): void {
         const result = await computeFatigueResistance(sport, curve_type);
         if (!result) return toolError("Insufficient power curve data for fatigue resistance analysis.");
         return safeReturn(result);
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        return toolError(`API error: ${msg}`);
+      }
+    },
+  );
+
+  // --- get_cp_history ---
+  server.tool(
+    "get_cp_history",
+    "Month-by-month critical power (CP), W' and Pmax from intervals.icu power-duration models fitted on each calendar month's best efforts, with peak 5 s / 1 min / 5 min / 20 min power, the activities that set each curve, and the change from the first to the last month with data. Shows whether the season shifts the power curve. Months without rides are listed as such.",
+    {
+      months: z
+        .number()
+        .int()
+        .min(1)
+        .max(24)
+        .optional()
+        .describe("Number of calendar months, current one included (default 12)"),
+      sport: z.string().optional().describe("Sport type (default Ride)"),
+      model: z
+        .enum(["MORTON_3P", "MS_2P", "FFT_CURVES", "ECP"])
+        .optional()
+        .describe(
+          "Model for the cp, w_prime and p_max columns (default MORTON_3P); every model is also returned per month",
+        ),
+      newest: dateStr.optional().describe("Last day of the window YYYY-MM-DD (default today)"),
+    },
+    async ({ months, sport, model, newest }) => {
+      try {
+        return safeReturn(await computeCpHistory({ months, sport, model, newest }));
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
         return toolError(`API error: ${msg}`);

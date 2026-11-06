@@ -15,6 +15,7 @@ export const TOOLSETS = {
     "get_polarization_analysis",
     "get_longitudinal_trends",
     "get_load_tracker",
+    "get_cp_history",
     "get_wellness_data",
     "get_wellness_day",
     "update_wellness",

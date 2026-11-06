@@ -51,7 +51,7 @@ PARTE 1 — ANALISI SETTIMANA CONCLUSA:
 - Volume per sport (ore, km, TSS)
 - Carico: CTL/ATL/TSB trend, ACWR, Monotony/Strain
 - Recupero, sui valori di intervals.icu: readiness, HRV e FC a riposo, con la media a 7 giorni e la fascia normale come nel morning_check, all'inizio e alla fine della settimana (chiama get_readiness_check con date=${daysAgo(6)} e poi senza argomenti) e i loro allarmi gravi. Il Recovery Index non è un valore di intervals: non usarlo per decidere
-- Aderenza al piano: sessioni completate vs pianificate, scostamenti e motivi
+- Aderenza al piano: chiama get_load_tracker con weeks_before=1 e weeks_after=1 e leggi plan_compliance della settimana (sedute pianificate, completate, saltate, non pianificate, compliance media %), con i motivi degli scostamenti se li conosci
 - Trend longitudinali: EF, HRR, potenza se disponibili
 
 PARTE 2 — PIANIFICAZIONE PROSSIMA SETTIMANA:
@@ -88,6 +88,7 @@ ${PROMPT_SUFFIX}`,
 Per l'attività trovata, analizza in dettaglio:
 - Riepilogo e metriche chiave
 - Laps/split e zone
+- Se è una seduta a intervalli: per le ripetute WORK (stesso group_id o durata simile) confronta in ordine potenza (o passo) e FC medie, calo di potenza dalla prima all'ultima e deriva della FC a parità di potenza. Con una sola ripetuta, o ripetute di durata diversa, non c'è confronto
 - Se ha dati di potenza: decoupling aerobico e dFRC
 - Punti di forza e cosa migliorare
 

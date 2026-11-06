@@ -666,7 +666,7 @@ $$
 
 ## 9. `get_dfa_alpha1` — DFA α1 Threshold Detection
 
-> **Non implementato nel server.** Il codice, mai registrato come strumento, è stato rimosso nella versione 0.4.0 e si recupera dal commit `2af8bb6` (`src/analytics/dfa-alpha1.ts`). La sezione resta come riferimento per i lavori futuri che richiedono gli intervalli RR.
+> **Non implementato nel server.** Il codice, mai registrato come strumento, è stato rimosso nella versione 0.4.0 e si recupera dal commit `2af8bb6` (`src/analytics/dfa-alpha1.ts`). La sezione resta come riferimento nel caso in cui diventino disponibili gli intervalli RR battito-battito.
 
 ### Modello
 
@@ -891,3 +891,18 @@ intervals.icu calcola HRR automaticamente (`icu_hrr`) per le attività che hanno
 4. **Confounders**: la potenza media per sessione può salire perché si fanno più intervalli (non perché si è più forti). L'EF è un indicatore più robusto dell'efficienza vera.
 
 5. **Soglia minima**: il tool richiede ≥ 3 data point per metrica per calcolare un trend. Con meno punti, la metrica viene omessa.
+
+---
+
+## 12. `get_cp_history` — CP, W' e Pmax mese per mese
+
+### Modello
+
+Per ogni mese di calendario della finestra (12 per default, il mese in corso fino a oggi) lo strumento chiede a intervals.icu la curva di potenza del solo periodo (`r.YYYY-MM-01.YYYY-MM-fine`) in una sola chiamata. Per ogni curva intervals.icu restituisce i modelli potenza-durata già adattati: MS_2P (CP e W'), MORTON_3P (CP, W', Pmax), FFT_CURVES ed ECP. Lo strumento riporta per mese il modello scelto (MORTON_3P per default) e tutti gli altri, i picchi a 5 s, 1 min, 5 min e 20 min, il numero di attività che compongono la curva e la variazione di CP, W' e Pmax tra il primo e l'ultimo mese con dati. I mesi senza uscite non compaiono nella risposta di intervals.icu: lo strumento abbina le curve per `id` e li elenca come mesi senza dati.
+
+### Contesto critico
+
+1. **Un mese è adattato solo sui propri sforzi migliori.** Se nel mese mancano sforzi massimali tra circa 3 e 20 minuti, il CP risulta più basso di quello reale; W' e Pmax richiedono sforzi brevi a tutta. Un CP basso in un mese di soli lavori in Z2 descrive gli allenamenti fatti, non una perdita di forma: va letto insieme ai picchi e al numero di attività.
+2. **I modelli divergono** soprattutto su W' (nello stesso mese MS_2P e ECP possono differire di migliaia di joule), perché usano punti diversi della curva. Il confronto nel tempo ha senso solo con lo stesso modello.
+3. **Nessun test di laboratorio**: i valori sono stime dai dati di allenamento e gara, come l'eFTP di intervals.icu.
+

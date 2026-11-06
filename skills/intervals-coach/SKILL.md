@@ -41,6 +41,8 @@ The server exposes the same four as MCP prompts (`morning_check`, `weekly_review
 | Is my intensity distribution polarized? | `get_polarization_analysis` |
 | How well do I hold power under fatigue? | `get_fatigue_resistance` (needs `after_kj0` in sport settings) |
 | Metabolic profile, VLaMax | `get_metabolic_profile` |
+| Is my CP, W' or sprint changing over the season? | `get_cp_history` (read low months against their peaks: a month without maximal efforts understates CP) |
+| Did I follow the plan this week? | `get_load_tracker`, field `plan_compliance` |
 
 The server may register only some toolsets (by default `core` and `planning` on the remote connector). If a tool the user needs is missing (curves, gear, files, chats), say which toolset holds it (`curves`, `gear`, `files`, `social`) and that it is enabled with `INTERVALS_TOOLSETS`; do not imitate it with other tools.
 
