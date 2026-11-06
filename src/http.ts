@@ -10,6 +10,8 @@ import { createServer } from "./server.js";
 const apiKey = process.env.INTERVALS_API_KEY;
 const athleteId = process.env.INTERVALS_ATHLETE_ID ?? "0";
 const port = parseInt(process.env.PORT ?? "3001", 10);
+// HOST=127.0.0.1 behind a local reverse proxy (Tailscale Funnel, cloudflared); unset, all interfaces
+const host = process.env.HOST || undefined;
 const mcpAuthToken = process.env.MCP_AUTH_TOKEN;
 
 if (!apiKey) {
@@ -118,7 +120,7 @@ app.get("/health", (_req, res) => {
   res.json(health);
 });
 
-const httpServer = app.listen(port, () => {
+const httpServer = app.listen(port, host as string, () => {
   console.log(`intervals-mcp HTTP server running on http://localhost:${port}/mcp`);
 });
 

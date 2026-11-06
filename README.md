@@ -69,6 +69,7 @@ The server is a plain Node.js 22 process. A public HTTPS endpoint is needed only
 | `INTERVALS_TOOLSETS` | No | HTTP: `core,planning`; stdio: `all` | Comma-separated toolsets to register (see [Toolsets](#toolsets)), or `all`. An unknown name stops startup |
 | `UPLOAD_DIR` | No | | HTTP only: directory from which `upload_activity` may read local files. Without it, remote uploads accept only `file_base64` |
 | `PORT` | No | `3001` | HTTP port (`npm run serve` only) |
+| `HOST` | No | all interfaces | Address to listen on (`npm run serve` only). Set `127.0.0.1` when a local reverse proxy (Tailscale Funnel, cloudflared) is the only way in |
 
 ## Toolsets
 
