@@ -324,14 +324,15 @@ npm run check       # type-check + lint + tests
 
 ```
 src/
-├── server.ts           # createServer(): wires prompts and tool modules, adds MCP annotations
-├── http.ts             # Streamable HTTP transport (Express, token auth, sessions)
+├── server.ts           # createServer(): wires prompts and tool modules, filters by toolset, adds MCP annotations
+├── http.ts             # Streamable HTTP transport (Express, token auth, stateless)
 ├── stdio.ts            # stdio transport (Claude Desktop)
 ├── intervals.ts        # HTTP client for the intervals.icu API
 ├── types.ts            # response types
 ├── mcp/
 │   ├── helpers.ts      # shared zod schemas, result helpers, date helpers, ServerOptions
 │   ├── prompts.ts      # the prompts
+│   ├── toolsets.ts     # toolset of every tool, INTERVALS_TOOLSETS parsing
 │   └── tools/          # tool registration, one module per domain
 │       ├── athlete.ts      activities.ts   curves.ts     analysis.ts
 │       ├── wellness.ts     events.ts       workouts.ts   files.ts
@@ -343,6 +344,7 @@ src/
     ├── fatigue-resistance.ts   # durability: fresh vs fatigued curves
     ├── metabolic.ts            # metabolic profile (VLaMax, Coggan)
     ├── polarization.ts         # intensity distribution
+    ├── readiness.ts            # readiness rule on intervals.icu values (same as the dashboard)
     ├── recovery.ts             # composite recovery index
     ├── training-load.ts        # monotony, strain, ACWR
     ├── trends.ts               # longitudinal trends and HRR
@@ -350,9 +352,11 @@ src/
     └── load-tracker.ts         # weekly TSS target vs done, per sport and day
 docs/
 └── MODELS.md           # mathematical models and literature (Italian)
+skills/
+└── intervals-coach/    # Agent Skill: coaching protocols (SKILL.md + references/)
 ```
 
-Tests live in `__tests__` folders next to the code they cover. Each registration function in `src/mcp/tools/` receives the `McpServer`; `registerFileTools` also receives the server options, because `upload_activity` depends on the upload policy. `server.ts` counts registrations and derives the read-only, destructive and open-world annotations from tool names, so a new tool is annotated correctly by following the existing naming (`get_`, `list_`, `delete_`, ...).
+Tests live in `__tests__` folders next to the code they cover. Each registration function in `src/mcp/tools/` receives the `McpServer`; `registerFileTools` also receives the server options, because `upload_activity` depends on the upload policy. `server.ts` counts registrations and derives the read-only, destructive and open-world annotations from tool names, so a new tool is annotated correctly by following the existing naming (`get_`, `list_`, `delete_`, ...). Every new tool must also be added to a toolset in `src/mcp/toolsets.ts`: `createServer()` throws on a tool without one, and a test checks that each tool is in exactly one toolset. Tools called by the prompts or the skill belong in `core`.
 
 ## Troubleshooting
 
@@ -366,6 +370,10 @@ Tests live in `__tests__` folders next to the code they cover. Each registration
 | `get_fatigue_resistance` returns no fatigued curve | Set the kJ threshold (`after_kj0`) in the sport settings on intervals.icu. Curves can take a few minutes to recompute after the change |
 | A tool does not respond | Check the internet connection and that intervals.icu is reachable |
 | Claude Desktop does not list the tools | Restart Claude Desktop after editing `claude_desktop_config.json` |
+| `MCP_AUTH_TOKEN must be at least 32 characters` | Generate a new token with `openssl rand -hex 32` and update the connector URL |
+| `Unknown toolset(s) ...` at startup | A name in `INTERVALS_TOOLSETS` is misspelled; the message lists the valid ones |
+| A tool from the tables is missing on the remote connector | Its toolset is not enabled: the HTTP default is `core,planning`. Add the toolset to `INTERVALS_TOOLSETS` (or use `all`) and restart; `/health` shows the active ones |
+| Dates are off by one day around midnight | Set `INTERVALS_TIMEZONE` (e.g. `Europe/Rome`) or the `timezone` in the intervals.icu profile |
 
 ## Future works
 
