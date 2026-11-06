@@ -233,6 +233,8 @@ I contributi percentuali sono una **stima modellistica**, non una misura diretta
 
 ## 4. `get_recovery_index` — Recovery & Readiness
 
+Dalla versione 0.3.0 il RI non è più la base delle decisioni nei prompt e nella skill: il riferimento è la readiness di intervals.icu, letta con la regola della sezione 4bis. Del RI si usano gli allarmi gravi (z-score di HRV o FC a riposo sotto −2, SpO₂ sotto il 93%).
+
 ### Modello
 
 Indice composito di recovery basato su **z-score individuali** delle metriche fisiologiche rispetto alla baseline rolling a 30 giorni, combinati tramite media pesata + mappatura sigmoidale.
@@ -379,6 +381,40 @@ $$
 4. **Campi soggettivi opzionali**: i campi `mood`, `motivation`, `fatigue`, `soreness`, `stress`, `injury` sono ora integrati (peso 1 ciascuno) con degradazione graceful. Se l'atleta non li compila, il RI funziona ugualmente con i soli dati oggettivi. Quando presenti, migliorano la predittività (Saw et al., 2016).
 
 > **Dong (2016)**. *The role of heart rate variability in sports physiology.* Exp Ther Med, 11(5), 1531–1536.
+
+---
+
+## 4bis. `get_readiness_check` — Regola di readiness
+
+### Scopo
+
+intervals.icu è il riferimento principale: la regola lavora solo su valori che intervals mostra (readiness importata dal dispositivo, HRV, FC a riposo, CTL, ATL) e non introduce un indice nuovo. È la stessa regola del cruscotto allenamenti, implementata in `src/analytics/readiness.ts`; un confronto su 2000 serie casuali con il codice del cruscotto ha dato lo stesso caso ogni volta.
+
+### Modello
+
+Per readiness, HRV e FC a riposo, riferite all'ultimo giorno con dati $d$:
+
+- media a 7 giorni $\bar{x}_7$ sui giorni $d-6 \ldots d$, con almeno 4 valori;
+- fascia normale $[\mu_{60} - s_{60}/2,\ \mu_{60} + s_{60}/2]$, con $\mu_{60}$ e $s_{60}$ (deviazione standard campionaria) sui giorni $d-60 \ldots d-1$, con almeno 30 valori;
+- media e limiti della fascia arrotondati a 0,1 prima del confronto; posizione: sotto, nella fascia, sopra.
+
+TSB $= \text{CTL} - \text{ATL}$ del giorno $d$, arrotondato a 0,1.
+
+| Caso | Condizione (vale la prima) | Codice |
+|---|---|---|
+| 1 | HRV sotto e FC a riposo sopra la fascia | `low`: intensità bassa |
+| 2 | TSB sotto −30 | `tired`: valutare un giorno di scarico |
+| 3 | Almeno un segnale: HRV sotto, FC a riposo sopra o readiness sotto | `watch`: piano senza aggiungere intensità |
+| 4 | Altrimenti | `ok`: nessun segnale contrario |
+
+Valori migliori del solito (HRV sopra, FC a riposo sotto, readiness sopra) non sono segnali. Lo strumento aggiunge gli allarmi gravi del RI dello stesso giorno, che giustificano un cambio di seduta qualunque sia il caso.
+
+### Contesto critico
+
+1. **La media a 7 giorni** segue l'indicazione di leggere l'HRV su finestre di più giorni e non sul singolo valore (Plews et al., 2012).
+2. **La fascia a ± mezza deviazione standard** e la soglia di TSB a −30 sono convenzioni d'uso, non soglie validate su esiti (prestazione, malattia, infortunio): la regola va letta come segnalazione di scostamento dalla norma individuale, non come previsione.
+3. **La readiness** è un valore proprietario del dispositivo o dell'app collegata; la regola la confronta solo con la sua storia, senza interpretarne la scala.
+4. **Ordine dei casi**: il caso 1 precede il TSB, quindi un segnale autonomico doppio prevale sulla sola fatica di carico; è una scelta di priorità, non un risultato empirico.
 
 ---
 
