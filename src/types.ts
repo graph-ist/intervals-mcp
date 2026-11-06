@@ -17,6 +17,7 @@ export interface WellnessDay {
   respiration?: number;
   readiness?: number;
   weight?: number;
+  timezone?: string;
   systolic?: number;
   diastolic?: number;
   [key: string]: unknown;
@@ -80,6 +81,7 @@ export interface SportSettings {
 /** Athlete profile (GET /athlete/{id}) */
 export interface Athlete {
   weight?: number;
+  timezone?: string;
   [key: string]: unknown;
 }
 

@@ -9,7 +9,7 @@ export function registerWellnessTools(server: McpServer): void {
     "get_wellness_data",
     "Get wellness data: CTL, ATL, TSB, weight, restingHR, HRV, sleep, mood, fatigue, etc.",
     {
-      days: z.number().optional().describe("How many days back (default 30)"),
+      days: z.number().int().min(1).max(730).optional().describe("How many days back (default 30)"),
       fields: z
         .array(z.string())
         .optional()

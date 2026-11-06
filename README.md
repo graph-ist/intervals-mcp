@@ -3,7 +3,7 @@
 [![CI](https://github.com/graph-ist/intervals-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/graph-ist/intervals-mcp/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-MCP server for [intervals.icu](https://intervals.icu). It exposes 146 tools covering the whole documented public API (except the OAuth-only `disconnect-app` endpoint), including nine analysis tools, and four prompts.
+MCP server for [intervals.icu](https://intervals.icu). It exposes 147 tools covering the whole documented public API (except the OAuth-only `disconnect-app` endpoint), including ten analysis tools, and four prompts.
 
 Two transports are provided: stdio for local clients such as Claude Desktop, and Streamable HTTP for remote clients such as claude.ai custom connectors.
 
@@ -64,11 +64,31 @@ The server is a plain Node.js 22 process. A public HTTPS endpoint is needed only
 |---|---|---|---|
 | `INTERVALS_API_KEY` | Yes | | intervals.icu API key (Settings → Developer) |
 | `INTERVALS_ATHLETE_ID` | No | `0` (current user) | intervals.icu athlete ID |
-| `MCP_AUTH_TOKEN` | Yes (HTTP only) | | Token required on `/mcp`. At least 32 characters: `openssl rand -hex 32` |
+| `MCP_AUTH_TOKEN` | Yes (HTTP only) | | Token required on `/mcp`. At least 32 characters, otherwise the server refuses to start: `openssl rand -hex 32` |
+| `INTERVALS_TIMEZONE` | No | athlete profile `timezone` | IANA time zone (e.g. `Europe/Rome`) used for "today" and date ranges. Without it the server reads the zone from the athlete profile at startup, and uses the process zone until then or if that fails |
+| `INTERVALS_TOOLSETS` | No | HTTP: `core,planning`; stdio: `all` | Comma-separated toolsets to register (see [Toolsets](#toolsets)), or `all`. An unknown name stops startup |
 | `UPLOAD_DIR` | No | | HTTP only: directory from which `upload_activity` may read local files. Without it, remote uploads accept only `file_base64` |
 | `PORT` | No | `3001` | HTTP port (`npm run serve` only) |
 
-## Tools (146)
+## Toolsets
+
+Every tool belongs to one toolset, defined in [src/mcp/toolsets.ts](src/mcp/toolsets.ts). `INTERVALS_TOOLSETS` chooses which ones the server registers, so a client loads only the definitions it needs: with all 147 tools the list costs about 30,000 tokens per conversation, with the remote default about 15,000 (estimated as characters / 3.5).
+
+| Toolset | Tools | Contents |
+|---|---|---|
+| `core` | 54 | Readiness and analysis tools, wellness, activity reads and metadata, athlete and sport settings, calendar events |
+| `planning` | 21 | Training plans, bulk calendar changes, workout library |
+| `curves` | 19 | Power, pace and HR curves, histograms, best efforts |
+| `activity_edit` | 8 | Streams and interval editing, deletions, bulk manual activities |
+| `files` | 9 | Uploads, downloads and CSV exports |
+| `gear` | 9 | Gear and maintenance reminders |
+| `social` | 15 | Routes, chats and activity comments |
+| `custom` | 7 | Custom charts, fields and panels |
+| `coach` | 5 | Tools for coaching several athletes |
+
+The HTTP transport registers `core,planning` unless told otherwise; stdio registers everything. `/health` reports the active toolsets and the tool count. The tables below list all tools, whichever toolset they are in.
+
+## Tools (147)
 
 ### Athlete and settings
 
@@ -150,6 +170,7 @@ Custom tools that compute physiological models on top of the API data. Formulas,
 
 | Tool | Description |
 |---|---|
+| `get_readiness_check` | Daily readiness on intervals.icu values: 7-day means of readiness, HRV and resting HR against a 60-day normal band (mean ± half the sample SD), plus TSB below −30, give one of four cases. Adds the severe flags (HRV or resting HR z below −2, SpO₂ below 93%). Same rule as the training dashboard and the `intervals-coach` skill |
 | `get_recovery_index` | Composite 0-100 recovery index from HRV, resting HR, sleep, Baevsky SI, SpO₂, respiration and subjective fields (mood, motivation, fatigue, soreness, stress, injury), against an individual 30-day baseline |
 | `get_training_load_risk` | Monotony, Strain (Foster, 1998), ACWR (Gabbett, 2016), volume spikes |
 | `get_aerobic_decoupling` | Pw:Hr decoupling: drift between first and second half, EF curve, assessment |
@@ -165,7 +186,7 @@ Which tool answers which question:
 | Question | Tool |
 |---|---|
 | How much did I ride, run or swim this month? | `get_fitness_summary` |
-| How am I today, can I train hard? | `get_recovery_index` |
+| How am I today, can I train hard? | `get_readiness_check` |
 | Am I increasing the load too fast? | `get_training_load_risk` |
 | What do the raw daily wellness values look like? | `get_wellness_data` |
 | Am I improving or declining? | `get_longitudinal_trends` |
@@ -268,12 +289,25 @@ Available through the prompt picker in claude.ai and Claude Desktop.
 
 | Prompt | When | What it does |
 |---|---|---|
-| `morning_check` | Morning | Red-flag scan: decides whether anything justifies deviating from the weekly plan. A recovery index between 55 and 80 without anomalies means executing the plan |
+| `morning_check` | Morning | Calls `get_readiness_check` and reports its case and severe flags; a specific, reversible change only when the case is not "ok" or a severe flag is present |
 | `weekly_review` | Sunday evening | Primary decision tool: review of the past week and planning of the next one, with explicit exception criteria |
 | `activity_review` | After a session | Finds the latest Ride, Run or Swim and analyses metrics, zones, pacing, decoupling and dFRC |
 | `load_tracker` | Any time | Calls `get_load_tracker` and draws weekly columns for the previous week, the current one and the next 11, filled with the TSS done in swim, bike, run and gym against the target. Weeks without a target stay empty |
 
 The prompt texts are written in Italian.
+
+## Skill
+
+[skills/intervals-coach](skills/intervals-coach) is an Agent Skill that carries the coaching protocols behind the four prompts: when to deviate from the weekly plan, which tools each protocol calls, how to read `reference_ranges` and `interpretation_guidance`, and when calendar writes need the user's confirmation. It loads only when a request is about training, so the protocols do not weigh on every conversation the way tool descriptions do.
+
+- **Claude Code**: copy the folder to `~/.claude/skills/intervals-coach/` (all projects) or `.claude/skills/intervals-coach/` (one project).
+- **claude.ai and Claude Desktop**: zip the `intervals-coach` folder and upload it as a custom skill in the app's skills settings.
+
+```bash
+cd skills && zip -r intervals-coach.zip intervals-coach
+```
+
+The skill and the prompts state the same rules; when one changes, update the other.
 
 ## Development
 

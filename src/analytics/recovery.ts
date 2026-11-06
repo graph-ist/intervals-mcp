@@ -66,6 +66,17 @@ function stats(arr: number[]): { mean: number; sd: number } {
   return { mean, sd: Math.max(Math.sqrt(variance), 0.001) };
 }
 
+// Status bands follow the decision rules in interpretation_guidance: 55-80 without anomalies means executing the plan
+export function recoveryStatus(ri: number): "Recovered" | "Moderate" | "Strained" | "At risk" {
+  if (ri >= 80) return "Recovered";
+  if (ri >= 55) return "Moderate";
+  if (ri >= 40) return "Strained";
+  return "At risk";
+}
+
+// Below this SpO2 a single reading is a severe red flag (93-94% is reported in reference_ranges as low, not flagged)
+export const SPO2_RED_FLAG = 93;
+
 export async function computeRecoveryIndex(days: number, daysAgo: (n: number) => string, today: () => string) {
   const N = Math.max(14, days);
   const data = await icu.getWellness(daysAgo(N + 30), today());
@@ -145,10 +156,7 @@ export async function computeRecoveryIndex(days: number, daysAgo: (n: number) =>
       const recoveryIndex = Math.round(100 / (1 + Math.exp(-1.2 * (avgZ + 0.5))));
       dayResult.recovery_index = recoveryIndex;
 
-      if (recoveryIndex >= 80) dayResult.status = "Recovered";
-      else if (recoveryIndex >= 60) dayResult.status = "Moderate";
-      else if (recoveryIndex >= 40) dayResult.status = "Strained";
-      else dayResult.status = "At risk";
+      dayResult.status = recoveryStatus(recoveryIndex);
     }
 
     // Red flags
@@ -160,7 +168,7 @@ export async function computeRecoveryIndex(days: number, daysAgo: (n: number) =>
     const baeM = dayResult.metrics.baevskySI;
     if (baeM && baeM.z_score < -1.5) flags.push(`Autonomic stress high (Baevsky SI=${baeM.value}, z=${baeM.z_score})`);
     const spo2M = dayResult.metrics.spO2;
-    if (spo2M && spo2M.value < 95) flags.push(`SpO₂ low (${spo2M.value}%)`);
+    if (spo2M && spo2M.value < SPO2_RED_FLAG) flags.push(`SpO₂ critically low (${spo2M.value}%)`);
     if (day.systolic && day.systolic > 140) flags.push(`Systolic BP elevated (${day.systolic} mmHg)`);
     if (day.diastolic && day.diastolic > 90) flags.push(`Diastolic BP elevated (${day.diastolic} mmHg)`);
     if (flags.length > 0) dayResult.red_flags = flags;
@@ -205,9 +213,14 @@ export async function computeRecoveryIndex(days: number, daysAgo: (n: number) =>
     reference_ranges: {
       recovery_index: [
         { range: "≥ 80", label: "Recovered", meaning: "Pronto per intensità alta, intervalli, gare" },
-        { range: "60–79", label: "Moderate", meaning: "Allenamento base/endurance OK, evitare intensità massimale" },
-        { range: "40–59", label: "Strained", meaning: "Corpo sotto stress — ridurre volume e intensità" },
-        { range: "< 40", label: "At risk", meaning: "Riposo attivo o completo, rischio overtraining/malattia" },
+        { range: "55–79", label: "Moderate", meaning: "Stato normale: esegui il piano settimanale" },
+        {
+          range: "40–54",
+          label: "Strained",
+          meaning:
+            "Un giorno isolato: annota il dato ed esegui il piano. Per ≥3 giorni con ≥2 metriche indipendenti convergenti: ridurre l'intensità, non il volume",
+        },
+        { range: "< 40", label: "At risk", meaning: "Riposo attivo o sessione Z1 breve, rivalutare nel weekly_review" },
       ],
       tsb_form: [
         { range: "+15 a +25", label: "Fresco", meaning: "Picco di forma, ideale per gara o test" },

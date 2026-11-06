@@ -309,9 +309,11 @@ La sigmoide è centrata a $\bar{z}_w = -0.5$ (non a zero) per dare RI ≈ 70 qua
 | Recovery Index | Classificazione |
 |---|---|
 | ≥ 80 | Recovered — pronto per intensità |
-| 60–79 | Moderate — allenamento base ok |
-| 40–59 | Strained — ridurre carico |
-| < 40 | At risk — riposo attivo o completo |
+| 55–79 | Moderate — esegui il piano settimanale |
+| 40–54 | Strained — un giorno isolato non cambia il piano; ≥3 giorni con ≥2 metriche indipendenti convergenti: ridurre l'intensità |
+| < 40 | At risk — riposo attivo o sessione Z1 breve |
+
+Le fasce coincidono con le regole di `interpretation_guidance` e del prompt `morning_check` (55–80 senza anomalie multigiorno: piano eseguito).
 
 #### Red flags (allarmi)
 
@@ -322,7 +324,7 @@ Condizioni che generano alert indipendentemente dal RI:
 | HRV crash | z < −2.0 |
 | Resting HR spike | z < −2.0 |
 | Baevsky SI elevato | z < −1.5 |
-| SpO₂ basso | < 95% (valore assoluto) |
+| SpO₂ critico | < 93% (valore assoluto; 93–94% compare come "Basso" nei reference_ranges, senza flag) |
 | Pressione sistolica | > 140 mmHg |
 | Pressione diastolica | > 90 mmHg |
 
@@ -343,7 +345,7 @@ $$
 | Riferimento | Contributo |
 |---|---|
 | **Plews et al. (2013)**. *Training adaptation and heart rate variability in elite endurance athletes: opening the door to effective monitoring.* Sports Med, 43(9), 773–781. | **Approccio adottato.** L'HRV va interpretato come deviazione dalla baseline individuale, non come valore assoluto. La media rolling e il coefficiente di variazione (CV) dell'HRV predicono overreaching. |
-| **Plews et al. (2012)**. *Heart rate variability in elite triathletes, is variation in variability the key to effective training?* Int J Sports Physiol Perform, 7(4), 394–400. | Un aumento del CV dell'HRV (maggiore variabilità giorno-giorno) è marker di affaticamento cumulativo, non solo il calo della media. |
+| **Plews et al. (2012)**. *Heart rate variability in elite triathletes, is variation in variability the key to effective training?* Eur J Appl Physiol, 112(11), 3729–3741. | Un aumento del CV dell'HRV (maggiore variabilità giorno-giorno) è marker di affaticamento cumulativo, non solo il calo della media. |
 | **Buchheit (2014)**. *Monitoring training status with HR measures: do all roads lead to Rome?* Front Physiol, 5, 73. | Review: resting HR, HRV, HR recovery sono marker complementari. Resting HR è meno sensibile di HRV ma più robusto. Approccio multi-metrica preferibile. |
 | **Baevsky & Berseneva (2008)**. *Methodical recommendations: use of kardivar system for determination of the stress level.* Moscow: IBMP. | Baevsky Stress Index (SI) = integrale di tensione calcolato da distribuzione RR. Nella formulazione classica SI > 150 = stress simpatico elevato, ma i dispositivi consumer lo riportano su scale diverse: il tool non applica soglie assolute. |
 | **Nicolò et al. (2020)**. *Respiratory frequency as a marker of physical effort during high-intensity interval training.* Front Physiol, 11, 575. | La frequenza respiratoria a riposo è marker di stress autonomico. Elevata con fatica residua e attivazione simpatica cronica. |
@@ -435,7 +437,7 @@ Le soglie vengono da sport di squadra e il valore predittivo dell'ACWR per gli i
 | **Foster et al. (2001)**. *Differences in perceptions of training by coaches and athletes.* South Afr J Sports Med, 8(2), 3–7. | Validazione: Monotony + Strain come predittori di illness in 25 atleti su 6 mesi. |
 | **Gabbett (2016)**. *The training—injury prevention paradox: should athletes be training smarter and harder?* Br J Sports Med, 50(5), 273–280. | **Modello adottato.** ACWR su dati di cricket, rugby, soccer: sweet spot 0.8-1.3 minimizza il rischio. Spiking > 1.5 aumenta il rischio 2-4×. |
 | **Hulin et al. (2014)**. *The acute:chronic workload ratio predicts injury: high chronic workload may decrease injury risk in elite rugby league players.* Br J Sports Med, 48(9), 708–712. | Validazione su elite rugby: ACWR > 1.5 raddoppia il rischio infortunio, ma un CTL alto (buon fitness) è protettivo. |
-| **Impellizzeri et al. (2020)**. *Acute:chronic workload ratio: conceptual issues and fundamental pitfalls.* Int J Sports Physiol Perform, 15(7), 907–913. | **Critica.** Il rolling ratio (7d/28d) ha coupling matematico spurio. L'EWMA (usato da intervals.icu e dalla nostra implementazione) riduce questo bias. |
+| **Impellizzeri et al. (2020)**. *Acute:chronic workload ratio: conceptual issues and fundamental pitfalls.* Int J Sports Physiol Perform, 15(6), 907–913. | **Critica.** Il rolling ratio (7d/28d) ha coupling matematico spurio. L'EWMA (usato da intervals.icu e dalla nostra implementazione) riduce questo bias. |
 | **Lolli et al. (2019)**. *Mathematical coupling causes spurious correlation within the conventional acute-to-chronic workload ratio calculations.* Br J Sports Med, 53(15), 921–922. | Dimostrazione formale del coupling. Raccomanda EWMA o modelli alternativi. |
 
 ### Contesto critico
