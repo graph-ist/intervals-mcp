@@ -1,7 +1,6 @@
 # intervals-mcp
 
 [![CI](https://github.com/graph-ist/intervals-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/graph-ist/intervals-mcp/actions/workflows/ci.yml)
-[![npm](https://img.shields.io/npm/v/@graph-ist/intervals-mcp.svg)](https://www.npmjs.com/package/@graph-ist/intervals-mcp)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 MCP server for [intervals.icu](https://intervals.icu). It exposes 143 tools covering the whole documented public API (except the OAuth-only `disconnect-app` endpoint), including eleven analysis tools, and four prompts. Version 1.0.0 is the current feature-complete release: no further tools are planned.
@@ -12,7 +11,7 @@ Two transports are provided: stdio for local clients such as Claude Desktop, and
 
 Requires Node.js 22 or later and an intervals.icu API key (intervals.icu → Settings → Developer → API key). The athlete ID is optional: without it the server uses the account the key belongs to.
 
-The package is published on npm as [`@graph-ist/intervals-mcp`](https://www.npmjs.com/package/@graph-ist/intervals-mcp). It installs two commands: `intervals-mcp` (stdio) and `intervals-mcp-http` (Streamable HTTP). No clone or build is needed; `npx` downloads and runs the latest release.
+The server installs straight from this GitHub repository: `npx -y github:graph-ist/intervals-mcp` downloads it, compiles it once and starts the stdio server, with no clone and no npm account. The first start takes about a minute; later starts reuse the npx cache. The package has two commands: `intervals-mcp` (stdio) and `intervals-mcp-http` (Streamable HTTP).
 
 ### Claude Desktop (stdio)
 
@@ -23,7 +22,7 @@ Add the server to `claude_desktop_config.json` (macOS: `~/Library/Application Su
   "mcpServers": {
     "intervals": {
       "command": "npx",
-      "args": ["-y", "@graph-ist/intervals-mcp"],
+      "args": ["-y", "github:graph-ist/intervals-mcp"],
       "env": {
         "INTERVALS_API_KEY": "your_api_key",
         "INTERVALS_ATHLETE_ID": "your_athlete_id"
@@ -38,12 +37,12 @@ Restart Claude Desktop afterwards.
 ### Claude Code
 
 ```bash
-claude mcp add intervals --env INTERVALS_API_KEY=your_api_key -- npx -y @graph-ist/intervals-mcp
+claude mcp add intervals --env INTERVALS_API_KEY=your_api_key -- npx -y github:graph-ist/intervals-mcp
 ```
 
 ### VS Code and other clients
 
-Any client that launches stdio servers takes the same command: `npx -y @graph-ist/intervals-mcp`, with `INTERVALS_API_KEY` in the environment. For a fixed version, use `@graph-ist/intervals-mcp@1.0.2`, or install it globally with `npm install -g @graph-ist/intervals-mcp` and call `intervals-mcp` directly.
+Any client that launches stdio servers takes the same command: `npx -y github:graph-ist/intervals-mcp`, with `INTERVALS_API_KEY` in the environment. Without a suffix npx takes the latest commit on `main`; for a fixed version add a tag, `github:graph-ist/intervals-mcp#v1.0.2`. To skip the compile at every cache refresh, install it once with `npm install -g github:graph-ist/intervals-mcp` and call `intervals-mcp` directly.
 
 ### From source
 
@@ -59,7 +58,7 @@ Then point the client at `node /ABSOLUTE/PATH/TO/intervals-mcp/dist/stdio.js`.
 ### Remote (Streamable HTTP)
 
 ```bash
-INTERVALS_API_KEY=xxx MCP_AUTH_TOKEN=$(openssl rand -hex 32) npx -y -p @graph-ist/intervals-mcp intervals-mcp-http
+INTERVALS_API_KEY=xxx MCP_AUTH_TOKEN=$(openssl rand -hex 32) npx -y -p github:graph-ist/intervals-mcp intervals-mcp-http
 ```
 
 The server listens on `http://localhost:3001/mcp`. The transport is stateless: every POST is handled independently, there are no sessions to expire, and restarting the server does not break connected clients. `GET` and `DELETE` on `/mcp` return 405. `/` and `/health` are unauthenticated; `/mcp` requires the token, sent either as `Authorization: Bearer <token>` or as a `?token=` query parameter. The query parameter exists because claude.ai custom connectors cannot send custom headers, so the connector URL has the form:
@@ -322,7 +321,7 @@ The prompts are short entry points: the rules of each protocol live only in the 
 
 [skills/intervals-coach](skills/intervals-coach) is an Agent Skill that carries the coaching protocols behind the four prompts: when to deviate from the weekly plan, which tools each protocol calls, how to read `reference_ranges`, and when calendar writes need the user's confirmation. It loads only when a request is about training, so the protocols do not weigh on every conversation the way tool descriptions do.
 
-- **Claude Code**: copy the folder (it is also included in the npm package, under `node_modules/@graph-ist/intervals-mcp/skills/`) to `~/.claude/skills/intervals-coach/` (all projects) or `.claude/skills/intervals-coach/` (one project).
+- **Claude Code**: copy the folder to `~/.claude/skills/intervals-coach/` (all projects) or `.claude/skills/intervals-coach/` (one project).
 - **claude.ai and Claude Desktop**: zip the `intervals-coach` folder and upload it as a custom skill in the app's skills settings.
 
 ```bash
@@ -333,7 +332,7 @@ The skill and the prompts state the same rules; when one changes, update the oth
 
 ## Development
 
-Releases are published to npm by [.github/workflows/release.yml](.github/workflows/release.yml) when a GitHub release tagged `vX.Y.Z` is published; the tag must match the `version` in `package.json`. The workflow uses npm trusted publishing, so no npm token is stored in the repository.
+A release is a git tag `vX.Y.Z` matching the `version` in `package.json`; users pin it with `github:graph-ist/intervals-mcp#vX.Y.Z`. The `prepare` script compiles TypeScript when npm installs from git, so `dist/` stays out of the repository. Publishing to the npm registry is prepared in [.github/workflows/release.yml](.github/workflows/release.yml) (npm trusted publishing, no token in the repository) and stays off until the repository variable `NPM_PUBLISH` is `true`.
 
 ```bash
 npm run build       # compile TypeScript
