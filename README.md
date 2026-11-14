@@ -1,30 +1,29 @@
 # intervals-mcp
 
 [![CI](https://github.com/graph-ist/intervals-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/graph-ist/intervals-mcp/actions/workflows/ci.yml)
+[![npm](https://img.shields.io/npm/v/@graph-ist/intervals-mcp.svg)](https://www.npmjs.com/package/@graph-ist/intervals-mcp)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 MCP server for [intervals.icu](https://intervals.icu). It exposes 143 tools covering the whole documented public API (except the OAuth-only `disconnect-app` endpoint), including eleven analysis tools, and four prompts. Version 1.0.0 is the current feature-complete release: no further tools are planned.
 
 Two transports are provided: stdio for local clients such as Claude Desktop, and Streamable HTTP for remote clients such as claude.ai custom connectors.
 
-## Quick start
+## Installation
 
-```bash
-npm install
-npm run build
-cp .env.example .env   # then add your intervals.icu API key (Settings → Developer)
-```
+Requires Node.js 22 or later and an intervals.icu API key (intervals.icu → Settings → Developer → API key). The athlete ID is optional: without it the server uses the account the key belongs to.
+
+The package is published on npm as [`@graph-ist/intervals-mcp`](https://www.npmjs.com/package/@graph-ist/intervals-mcp). It installs two commands: `intervals-mcp` (stdio) and `intervals-mcp-http` (Streamable HTTP). No clone or build is needed; `npx` downloads and runs the latest release.
 
 ### Claude Desktop (stdio)
 
-Add the server to `~/Library/Application Support/Claude/claude_desktop_config.json`:
+Add the server to `claude_desktop_config.json` (macOS: `~/Library/Application Support/Claude/`, Windows: `%APPDATA%\Claude\`):
 
 ```json
 {
   "mcpServers": {
     "intervals": {
-      "command": "node",
-      "args": ["/ABSOLUTE/PATH/TO/intervals-mcp/dist/stdio.js"],
+      "command": "npx",
+      "args": ["-y", "@graph-ist/intervals-mcp"],
       "env": {
         "INTERVALS_API_KEY": "your_api_key",
         "INTERVALS_ATHLETE_ID": "your_athlete_id"
@@ -36,10 +35,31 @@ Add the server to `~/Library/Application Support/Claude/claude_desktop_config.js
 
 Restart Claude Desktop afterwards.
 
+### Claude Code
+
+```bash
+claude mcp add intervals --env INTERVALS_API_KEY=your_api_key -- npx -y @graph-ist/intervals-mcp
+```
+
+### VS Code and other clients
+
+Any client that launches stdio servers takes the same command: `npx -y @graph-ist/intervals-mcp`, with `INTERVALS_API_KEY` in the environment. For a fixed version, use `@graph-ist/intervals-mcp@1.0.2`, or install it globally with `npm install -g @graph-ist/intervals-mcp` and call `intervals-mcp` directly.
+
+### From source
+
+```bash
+git clone https://github.com/graph-ist/intervals-mcp.git
+cd intervals-mcp
+npm ci
+npm run build
+```
+
+Then point the client at `node /ABSOLUTE/PATH/TO/intervals-mcp/dist/stdio.js`.
+
 ### Remote (Streamable HTTP)
 
 ```bash
-INTERVALS_API_KEY=xxx INTERVALS_ATHLETE_ID=yyy MCP_AUTH_TOKEN=$(openssl rand -hex 32) npm run serve
+INTERVALS_API_KEY=xxx MCP_AUTH_TOKEN=$(openssl rand -hex 32) npx -y -p @graph-ist/intervals-mcp intervals-mcp-http
 ```
 
 The server listens on `http://localhost:3001/mcp`. The transport is stateless: every POST is handled independently, there are no sessions to expire, and restarting the server does not break connected clients. `GET` and `DELETE` on `/mcp` return 405. `/` and `/health` are unauthenticated; `/mcp` requires the token, sent either as `Authorization: Bearer <token>` or as a `?token=` query parameter. The query parameter exists because claude.ai custom connectors cannot send custom headers, so the connector URL has the form:
@@ -68,8 +88,8 @@ The server is a plain Node.js 22 process. A public HTTPS endpoint is needed only
 | `INTERVALS_TIMEZONE` | No | athlete profile `timezone` | IANA time zone (e.g. `Europe/Rome`) used for "today" and date ranges. Without it the server reads the zone from the athlete profile at startup, and uses the process zone until then or if that fails |
 | `INTERVALS_TOOLSETS` | No | HTTP: `core,planning`; stdio: `all` | Comma-separated toolsets to register (see [Toolsets](#toolsets)), or `all`. An unknown name stops startup |
 | `UPLOAD_DIR` | No | | HTTP only: directory from which `upload_activity` may read local files. Without it, remote uploads accept only `file_base64` |
-| `PORT` | No | `3001` | HTTP port (`npm run serve` only) |
-| `HOST` | No | all interfaces | Address to listen on (`npm run serve` only). Set `127.0.0.1` when a local reverse proxy (Tailscale Funnel, cloudflared) is the only way in |
+| `PORT` | No | `3001` | HTTP port (`intervals-mcp-http` only) |
+| `HOST` | No | all interfaces | Address to listen on (`intervals-mcp-http` only). Set `127.0.0.1` when a local reverse proxy (Tailscale Funnel, cloudflared) is the only way in |
 
 ## Toolsets
 
@@ -302,7 +322,7 @@ The prompts are short entry points: the rules of each protocol live only in the 
 
 [skills/intervals-coach](skills/intervals-coach) is an Agent Skill that carries the coaching protocols behind the four prompts: when to deviate from the weekly plan, which tools each protocol calls, how to read `reference_ranges`, and when calendar writes need the user's confirmation. It loads only when a request is about training, so the protocols do not weigh on every conversation the way tool descriptions do.
 
-- **Claude Code**: copy the folder to `~/.claude/skills/intervals-coach/` (all projects) or `.claude/skills/intervals-coach/` (one project).
+- **Claude Code**: copy the folder (it is also included in the npm package, under `node_modules/@graph-ist/intervals-mcp/skills/`) to `~/.claude/skills/intervals-coach/` (all projects) or `.claude/skills/intervals-coach/` (one project).
 - **claude.ai and Claude Desktop**: zip the `intervals-coach` folder and upload it as a custom skill in the app's skills settings.
 
 ```bash
@@ -312,6 +332,8 @@ cd skills && zip -r intervals-coach.zip intervals-coach
 The skill and the prompts state the same rules; when one changes, update the other.
 
 ## Development
+
+Releases are published to npm by [.github/workflows/release.yml](.github/workflows/release.yml) when a GitHub release tagged `vX.Y.Z` is published; the tag must match the `version` in `package.json`. The workflow uses npm trusted publishing, so no npm token is stored in the repository.
 
 ```bash
 npm run build       # compile TypeScript
@@ -364,7 +386,7 @@ Tests live in `__tests__` folders next to the code they cover. Each registration
 
 | Problem | Solution |
 |---|---|
-| `INTERVALS_API_KEY is required` | Create `.env` with your API key (`cp .env.example .env`) |
+| `INTERVALS_API_KEY is required` | Set `INTERVALS_API_KEY` in the `env` block of the client configuration (or in the shell for `intervals-mcp-http`) |
 | `intervals.icu 401` | Wrong or expired API key: regenerate it in Settings → Developer |
 | `intervals.icu 404` | Invalid activity or athlete ID |
 | `intervals.icu 429` | Rate limit (10 requests/s). The server retries short waits by itself; otherwise retry after the indicated seconds |

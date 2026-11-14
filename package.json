@@ -1,8 +1,46 @@
 {
-  "name": "intervals-mcp",
-  "version": "1.0.1",
-  "private": true,
+  "name": "@graph-ist/intervals-mcp",
+  "version": "1.0.2",
+  "description": "MCP server for intervals.icu: the full public API (143 tools) plus training-load analysis, over stdio or Streamable HTTP",
+  "license": "MIT",
+  "author": "graph-ist",
+  "homepage": "https://github.com/graph-ist/intervals-mcp#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/graph-ist/intervals-mcp.git"
+  },
+  "bugs": {
+    "url": "https://github.com/graph-ist/intervals-mcp/issues"
+  },
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "intervals.icu",
+    "training",
+    "cycling",
+    "running",
+    "claude"
+  ],
   "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "bin": {
+    "intervals-mcp": "dist/stdio.js",
+    "intervals-mcp-http": "dist/http.js"
+  },
+  "files": [
+    "dist/",
+    "!dist/**/__tests__/",
+    "skills/",
+    "docs/",
+    "LICENSE",
+    "README.md"
+  ],
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
   "scripts": {
     "build": "tsc",
     "start": "node dist/stdio.js",
@@ -11,7 +49,8 @@
     "test:watch": "vitest",
     "lint": "biome check src/",
     "lint:fix": "biome check --write src/",
-    "check": "tsc --noEmit && biome check src/ && vitest run"
+    "check": "tsc --noEmit && biome check src/ && vitest run",
+    "prepublishOnly": "npm run check && npm run build"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.32.2",
